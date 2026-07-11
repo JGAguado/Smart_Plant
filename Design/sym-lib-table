@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "Smart_Plant-eagle-import") (type "KiCad") (uri "${KIPRJMOD}/Smart_Plant-eagle-import.kicad_sym") (options "") (descr ""))
+)
