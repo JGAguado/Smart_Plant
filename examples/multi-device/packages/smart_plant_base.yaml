@@ -142,7 +142,8 @@ spi:
   mosi_pin: GPIO11
 
 image:
-  - file: "${label_image}"
+  - platform: file
+    file: "${label_image}"
     id: page_1_background
     type: BINARY
     invert_alpha: true

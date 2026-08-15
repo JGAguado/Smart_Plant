@@ -73,7 +73,8 @@ spi:
   mosi_pin: GPIO11
     
 image:
-  - file: "https://smart-plant.readthedocs.io/en/v2r1/_images/Lemon_tree_label_page_1.png"
+  - platform: file
+    file: "https://smart-plant.readthedocs.io/en/v2r1/_images/Lemon_tree_label_page_1.png"
     id: page_1_background
     type: binary
     invert_alpha: true
