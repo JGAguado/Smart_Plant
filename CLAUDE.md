@@ -45,22 +45,24 @@ Duplicate species (the two Ceropegia woodii) share one `device_name`, so they
 instead set an explicit unique `configured_name` (`<device_name>-<mac6>`) with
 `name_add_mac_suffix: false`; the ESPHome node name, hostname and MQTT prefix
 are then taken verbatim from `configured_name`, avoiding a Device Builder
-collision on identical node names. The locked target generalizes each already-
+collision on identical node names. The naming target generalizes each already-
 effective `<device_name>-<mac6>` configured name with
 `name_add_mac_suffix: false` to all eight, preserving every hostname and MQTT
-prefix byte-for-byte while preventing MAC suffixes in human device names. The
-repository and staged NAS YAMLs carry this target, while deployed firmware and
-HA still await the coordinated cutover. See `docs/naming.md` for the explicit
-deployed/staged/target map and `docs/naming-architecture.md` for the migration
-contract.
+prefix byte-for-byte while preventing MAC suffixes in human device names. This
+is DONE: flashed fleet-wide 2026-09-03 (8/8 on `f913779`), HA registry migrated
+in place, consumers re-pointed, `name_by_user` kept for FR typography. See
+`docs/naming.md` for the field map and `docs/naming-architecture.md` for the
+migration contract (executed, Path 2).
 
 The 2026-08-14 migration is complete across ESPHome filenames/configuration,
 MQTT retained topics, Home Assistant device/entity registries, automations,
 dashboard references, and all eight Plant integration bindings. Home Assistant
 epic `infra-b5q` is the authoritative migration evidence. Do not restore the
-legacy `woodii1`/`woodii2` prefixes. A separate pending naming cleanup
-(`infra-zdxz` + HA `infra-kl21`) intentionally targets clean, uniform
-MAC-bearing entity IDs while preserving registry rows, history, and statistics.
+legacy `woodii1`/`woodii2` prefixes. The later naming-decoupling cleanup
+(`infra-zdxz` + HA `infra-kl21`, both closed 2026-09-04) delivered clean, uniform
+MAC-bearing entity IDs. It ran Path 2 (Florent 2026-09-03): HA auto-created fresh
+clean entities and the old rows/stats were deleted — pre-cutover plant history
+was NOT preserved (judged low-value).
 
 The shared `1.25V → 100%, 2.8V → 0%` soil values are defaults; they are not
 evidence of individual probe calibration.
@@ -105,11 +107,11 @@ SessionStart hook — do not duplicate tactical status here.
 Structural pointers (epics, plan docs, cross-project handoffs):
 
 - Roadmap epic: `infra-3rr` (post-baseline: durability, validation, OTA, upstream).
-- Naming epic: `infra-zdxz` — decouple technical identity / human display name /
-  MQTT entity naming. Cross-project HA registry migration (in-place `unique_id`
-  plus clean `entity_id`): `infra-kl21` (`project=homeassistant`). Current-state
-  field map: `docs/naming.md`; locked target/runbook contract:
-  `docs/naming-architecture.md`.
+- Naming decoupling DELIVERED (epic `infra-zdxz` + HA `infra-kl21` closed
+  2026-09-04, fleet flashed `f913779` 2026-09-03): technical identity / human
+  `display_name` / function-only MQTT entity names decoupled; clean MAC-bearing
+  `entity_id`s; `name_by_user` kept for FR typography. Field map `docs/naming.md`;
+  contract `docs/naming-architecture.md`.
 - Package cutover (`infra-3rr.36`/`.37`) and low-battery hibernation
   (`infra-3rr.25`) shipped fleet-wide (8/8 on `core`+`profile_mqtt`);
   `smart_plant_base.yaml` retired.

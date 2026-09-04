@@ -27,17 +27,19 @@
   effective `<device_name>-<mac6>` value as `configured_name` with
   `name_add_mac_suffix: false`. This preserves hostname/MQTT identity while
   giving Device Builder and build artifacts an unambiguous configured name.
-- The locked naming target generalizes that explicit effective identity to all
-  eight devices, still preserving every hostname and MQTT prefix byte-for-byte.
-  The repository and staged NAS YAMLs carry that target, but the coordinated HA
-  registry migration and firmware rollout remain pending under `infra-zdxz` and
-  `infra-kl21`; staged configuration is not current fleet state.
+- The naming target generalizes that explicit effective identity to all eight
+  devices, preserving every hostname and MQTT prefix byte-for-byte. DELIVERED and
+  flashed fleet-wide 2026-09-03 (8/8 on `f913779`): explicit `configured_name` +
+  `name_add_mac_suffix: false`, `display_name` the single human source. HA
+  registry migrated in place (clean MAC-bearing entity_ids, orphan rows/stats
+  deleted, retained discovery emptied, consumers re-pointed). `name_by_user` is
+  KEPT to preserve FR typography (ASCII-hyphen firmware `friendly_name` would
+  downgrade it). Epics `infra-zdxz` + HA `infra-kl21` closed 2026-09-04.
 - The authoritative device inventory is in `examples/multi-device/plants.yaml`;
   OTA workflow is in `examples/multi-device/README.md` and `CLAUDE.md`.
-- Deployed/staged/target field map and traps: `docs/naming.md`. Locked target and
-  coordinated 96-entity migration contract: `docs/naming-architecture.md`.
-  Read both before renaming anything; identity fields above are separate from
-  display.
+- Field map and traps: `docs/naming.md`. Migration contract (executed 2026-09-03,
+  Path 2 — no history remap): `docs/naming-architecture.md`. Read both before
+  renaming anything; identity fields above are separate from display.
 
 ## Live systems and safety
 
@@ -104,14 +106,17 @@
   native-API alternative. Fleet cutover COMPLETE 2026-09-01: all 8 devices on
   `smart_plant_core`+`smart_plant_profile_mqtt`, `smart_plant_base.yaml` retired
   (`infra-3rr.36`/`.37` closed).
-- Naming model: epic `infra-zdxz`. `docs/naming.md` separates deployed firmware,
-  staged NAS configuration, and repository target;
-  `docs/naming-architecture.md` locks the target: preserve all effective runtime
-  identities, generalize explicit `<device_name>-<mac6>` configured names to all
-  eight, make `display_name` the single human source, use 12 function-only MQTT
-  entity names, and migrate 96 HA `unique_id` + `entity_id` pairs in place through
-  `infra-kl21`. E-paper arcs use a versioned one-off snapshot of HA-authoritative
-  plant thresholds, with no runtime synchronization. Supersedes `infra-4u5`.
+- Naming model (DELIVERED; epic `infra-zdxz` + HA `infra-kl21` closed 2026-09-04):
+  all effective runtime identities preserved, explicit `<device_name>-<mac6>`
+  configured names on all eight, `display_name` the single human source, 10
+  function-only MQTT entity names/device (was 12; `pull_ota` switch +
+  `firmware_pull_update` dropped with pull-OTA at `f913779`). HA migration ran
+  Path 2 (Florent 2026-09-03): flash → HA auto-creates clean MAC-bearing
+  entity_ids → delete orphan rows + clear stats → empty retained discovery →
+  re-point consumers; no `unique_id`/history remap. `name_by_user` kept (FR
+  typography). Field map `docs/naming.md`; contract `docs/naming-architecture.md`.
+  E-paper arcs use a versioned one-off snapshot of HA-authoritative plant
+  thresholds, no runtime sync. Supersedes `infra-4u5`.
 - Residual induced-failure validation only: `infra-3rr.14` (low-battery
   rejection, repeated-ON deadline restart, MQTT outage/recovery, and failed-OTA
   retry). Normal Maintenance, Storage entry/daily wake/exit, naming migration,
