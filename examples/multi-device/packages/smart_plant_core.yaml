@@ -38,8 +38,6 @@ substitutions:
   device_comment: "${secondary_name} / ${display_name}"
   project_name: "smart.plant"
   project_version: "2.2"
-  ap_ssid: "Smart-Plant"
-  ap_pwd: "smartplant"
   timezone: "Europe/Paris"
 
   # OTA password (leave empty string for no password)
@@ -154,7 +152,6 @@ esp32:
 logger:
   level: WARN
 
-captive_portal:
 improv_serial:
 
 wifi:
@@ -166,9 +163,6 @@ wifi:
   # (sinon le device n'annonce le mDNS qu'à son boot). Coût = un peu plus de conso.
   power_save_mode: none
   use_address: "${use_address}"
-  ap:
-    ssid: "${ap_ssid}"
-    password: "${ap_pwd}"
 
 i2c:
   scl: GPIO34

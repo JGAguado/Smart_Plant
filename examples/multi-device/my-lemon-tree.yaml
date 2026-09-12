@@ -26,7 +26,6 @@ substitutions:
   # Use secret references for new installations. Existing live credentials do
   # not need to be migrated solely to follow this example.
   ota_password: !secret lemon_tree_ota_password
-  ap_pwd: !secret fallback_ap_password
 
   # Plant label image (place PNG in esphome/plant_labels/)
   label_image: "plant_labels/Lemon_tree_label_page_1.png"
