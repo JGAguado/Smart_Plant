@@ -293,6 +293,10 @@ sensor:
       - median:
           window_size: 5
           send_every: 5
+      - clamp:
+          min_value: 0.5
+          max_value: 3.3
+          ignore_out_of_range: true
       - calibrate_linear:
           - ${soil_v_wet} -> 100.00
           - ${soil_v_dry} -> 0.00
