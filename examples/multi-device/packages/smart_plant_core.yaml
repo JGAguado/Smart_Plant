@@ -327,9 +327,8 @@ display:
           // WARN signalling: below warn_pct the whole page renders in negative
           // (fill black, draw white). Same layout, glanceable state change. The
           // label image is drawn inverted via its (on,off) colour args = (fg,bg).
-          bool bat_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
-          float battery_perc = bat_valid ? id(batpercent).state : 0.0f;
-          bool low = bat_valid && battery_perc < ${low_batt_warn_pct};
+          float battery_perc = id(batpercent).state;
+          bool low = battery_perc < ${low_batt_warn_pct};
           auto fg = low ? COLOR_OFF : COLOR_ON;
           auto bg = low ? COLOR_ON  : COLOR_OFF;
           it.fill(bg);
@@ -341,19 +340,16 @@ display:
           it.printf(2, 0,  id(font_title),    fg, TextAlign::TOP_LEFT, "${display_name}");
           it.printf(2, 22, id(font_subtitle), fg, TextAlign::TOP_LEFT, "${secondary_name}");
 
-          if (bat_valid) {
-            int battery_range = (int)(battery_perc / 16.0f);
-            battery_range = (battery_range > 6) ? 6 : battery_range;
-            battery_range = (battery_range < 0)  ? 0 : battery_range;
-            const char* battery_icon_map[] = {
-              "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
-              "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
-            };
-            it.printf(278, 1, id(font_icon), fg, TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
-            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
-          } else {
-            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, " --%");
-          }
+          int battery_range = battery_perc / 16;
+          battery_range = (battery_range > 6) ? 6 : battery_range;
+          battery_range = (battery_range < 0)  ? 0 : battery_range;
+
+          const char* battery_icon_map[] = {
+            "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
+            "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
+          };
+          it.printf(278, 1, id(font_icon), fg, TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
+          it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
 
           auto now = id(esptime).now();
           if (now.is_valid()) {
@@ -369,11 +365,7 @@ display:
           int radius = 22;
           int thick = 7;
 
-          auto draw_gauge = [&](float value, bool has_val, float vmin, float vmax, int xc, int yc, const char* fmt) {
-            if (!has_val || !std::isfinite(value)) {
-              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, "--");
-              return;
-            }
+          auto draw_gauge = [&](float value, float vmin, float vmax, int xc, int yc, const char* fmt) {
             if (value < vmin) value = vmin;
             if (value > vmax) value = vmax;
             float val = (value - vmin) / abs(vmax - vmin) * alpha;
@@ -389,10 +381,10 @@ display:
             it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, fmt, value);
           };
 
-          draw_gauge(id(soil).state,  id(soil).has_state(),  0,            100,            80,  50, "%.0f%%");
-          draw_gauge(id(light).state, id(light).has_state(), 0,            ${light_max},  134,  70, "%.0flx");
-          draw_gauge(id(temp).state,  id(temp).has_state(),  ${temp_min},  ${temp_max},   188,  50, "%.0f°C");
-          draw_gauge(id(hum).state,   id(hum).has_state(),   ${hum_min},   ${hum_max},    242,  70, "%.0f%%");
+          draw_gauge(id(soil).state,  0,            100,            80,  50, "%.0f%%");
+          draw_gauge(id(light).state, 0,            ${light_max},  134,  70, "%.0flx");
+          draw_gauge(id(temp).state,  ${temp_min},  ${temp_max},   188,  50, "%.0f°C");
+          draw_gauge(id(hum).state,   ${hum_min},   ${hum_max},    242,  70, "%.0f%%");
 
       - id: page_maintenance
         lambda: |-
