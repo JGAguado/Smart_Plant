@@ -14643,7 +14643,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "d2a0fed6-1fe2-45be-86bb-8d3aba937388")
-		(property "Reference" "FPC0"
+		(property "Reference" "FPC"
 			(at 254 39.37 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14781,7 +14781,7 @@
 		(instances
 			(project "Smart_Plant"
 				(path "/f81eaaab-182d-40b6-aa67-993c089e3c14"
-					(reference "FPC0")
+					(reference "FPC")
 					(unit 1)
 				)
 			)
