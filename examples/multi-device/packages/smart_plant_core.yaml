@@ -1,13 +1,14 @@
 # =============================================================================
-# Smart Plant — shared base package
+# Smart Plant — transport-independent core package
 # =============================================================================
-# Usage: create a device file (see ../my-lemon-tree.yaml) that defines only
-# the substitutions specific to that plant, then reference this package via:
+# Compose this package with exactly one transport profile:
 #
 #   packages:
-#     base: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_base.yaml@V2R1
+#     core: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_core.yaml@V2R1
+#     transport: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_profile_mqtt.yaml@V2R1
 #
-# Every change pushed here propagates to all devices on the next OTA flash.
+# This file owns hardware, sensors, display, Wi-Fi and the sleep decision only.
+# Transport setup and boot orchestration belong to the selected profile.
 # =============================================================================
 
 # Default values — override any of these in your device file.
@@ -21,24 +22,15 @@ substitutions:
   ap_pwd: "smartplant"
   timezone: "Europe/Paris"
 
-  # MQTT topic prefix — must match retained prefix already in Home Assistant.
-  # Format: <device_name>-<last 3 bytes of MAC>. Set once, never change
-  # (renaming orphans all entities in HA).
-  mqtt_topic_prefix: "${device_name}"
-
   # OTA password (leave empty string for no password)
   ota_password: ""
 
-  # WiFi/MQTT credentials — overridden per-device via !secret in the local
+  # Wi-Fi credentials — overridden per-device via !secret in the local
   # device file. Must stay plain substitutions here (no !secret): this file
   # is fetched as a remote package, and the remote-build bundler refuses to
   # ship secrets.yaml to packages pulled from a github:// source.
   wifi_ssid: ""
   wifi_password: ""
-  mqtt_broker: ""
-  mqtt_username: ""
-  mqtt_password: ""
-
   # Address used by ESPHome CLI/dashboard for OTA and log connections.
   # Default: device hostname via mDNS. Set to static IP for reliability.
   use_address: "${device_name}"
@@ -64,14 +56,6 @@ esphome:
   project:
     name: "${project_name}"
     version: "${project_version}"
-  on_boot:
-    priority: 600
-    then:
-      - wait_until:
-          condition:
-            mqtt.connected:
-          timeout: 30s
-      - script.execute: consider_deep_sleep
 
 esp32:
   board: esp32-s2-saola-1
@@ -81,39 +65,6 @@ esp32:
 
 logger:
   level: WARN
-
-# MQTT — required for deep-sleep compatibility: retained values survive sleep
-# so Home Assistant sees fresh data on wake without "unavailable" state.
-# MQTT is kept as the data source for Home Assistant (retained values survive
-# deep sleep). The native API below is enabled ONLY so the ESPHome dashboard can
-# read rich device metadata (mac / config_hash / version) via the _esphomelib._tcp
-# mDNS record — MQTT-only devices advertise _http._tcp with `version` alone.
-# Do NOT add these devices to Home Assistant via the ESPHome (API) integration,
-# or you get duplicate entities that go unavailable during sleep. Keep them on MQTT.
-mqtt:
-  broker: "${mqtt_broker}"
-  username: "${mqtt_username}"
-  password: "${mqtt_password}"
-  discovery: true
-  discovery_retain: true
-  birth_message:    # disabled — prevents HA marking device offline during sleep
-  will_message:
-  log_topic:        # disabled — saves bandwidth on wake
-  topic_prefix: "${mqtt_topic_prefix}"
-
-# Native API — dashboard metadata only (see note above). reboot_timeout: 0s so a
-# sleeping device with no API client connected doesn't reboot itself.
-# encryption.key via ${api_encryption_key} substitution (repo public → jamais de
-# clé en clair ni de !secret ici ; chaque device yaml définit la substitution
-# depuis secrets.yaml).
-api:
-  encryption:
-    key: "${api_encryption_key}"
-  reboot_timeout: 0s
-
-ota:
-  - platform: esphome
-    password: "${ota_password}"
 
 captive_portal:
 improv_serial:

@@ -2,13 +2,20 @@
 # My Lemon Tree — device-specific config
 # =============================================================================
 # Only define what's specific to this device. Everything else comes from the
-# base package (sensors, display, deep sleep, MQTT, fonts...).
+# core and retained-MQTT profile (sensors, display, sleep and transport).
 # =============================================================================
 
 substitutions:
   device_name: "lemon-tree"
   friendly_name: "Lemon Tree"
   device_comment: "Citrus limon / Lemon Tree"
+
+  wifi_ssid: !secret wifi_ssid
+  wifi_password: !secret wifi_password
+  mqtt_broker: !secret mqtt_broker
+  mqtt_username: !secret mqtt_username
+  mqtt_password: !secret mqtt_password
+  api_encryption_key: !secret lemon_tree_api_encryption_key
 
   # MQTT topic prefix — set once and never change (renaming orphans HA entities).
   # Format: <device_name>-<last 3 bytes of MAC>, visible in ESPHome logs on first boot.
@@ -30,9 +37,10 @@ substitutions:
   light_max: "8000"
 
 packages:
-  base: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_base.yaml@V2R1
+  core: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_core.yaml@V2R1
+  transport: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_profile_mqtt.yaml@V2R1
 
-# Static IP — merges on top of base wifi block. Remove this block for DHCP.
+# Static IP — merges on top of the core Wi-Fi block. Remove this block for DHCP.
 wifi:
   manual_ip:
     static_ip: 192.168.1.100

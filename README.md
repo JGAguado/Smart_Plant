@@ -25,9 +25,11 @@ The Smart Plant is a board that can be plugged directly on the soil, close to th
   configuration are the simplest starting point for one device using the
   native ESPHome API.
 - The [multi-device example](./examples/multi-device/my-lemon-tree.yaml) and
-  [shared package](./examples/multi-device/packages/smart_plant_base.yaml)
-  demonstrate retained MQTT telemetry for deployments where values should
-  remain visible while devices sleep.
+  [shared core](./examples/multi-device/packages/smart_plant_core.yaml)
+  demonstrate a reusable configuration with selectable
+  [MQTT](./examples/multi-device/packages/smart_plant_profile_mqtt.yaml) or
+  [native-API](./examples/multi-device/packages/smart_plant_profile_api.yaml)
+  transport.
 
 
 

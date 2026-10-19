@@ -1,0 +1,31 @@
+# =============================================================================
+# My Lemon Tree — native-API variant
+# =============================================================================
+# This minimal device file uses the same hardware core as the MQTT example but
+# selects the native ESPHome API transport. Its entities are unavailable while
+# the device is in deep sleep.
+# =============================================================================
+
+substitutions:
+  device_name: "lemon-tree-api"
+  friendly_name: "Lemon Tree"
+  device_comment: "Citrus limon / Lemon Tree"
+  wifi_ssid: !secret wifi_ssid
+  wifi_password: !secret wifi_password
+  api_encryption_key: !secret lemon_tree_api_encryption_key
+  ota_password: "replace-with-your-ota-password"
+  label_image: "plant_labels/Lemon_tree_label_page_1.png"
+  timezone: "Europe/Paris"
+  soil_v_wet: "1.25"
+  soil_v_dry: "2.8"
+  light_max: "8000"
+
+packages:
+  core: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_core.yaml@V2R1
+  transport: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_profile_api.yaml@V2R1
+
+wifi:
+  manual_ip:
+    static_ip: 192.168.1.101
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0

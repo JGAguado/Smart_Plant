@@ -1,0 +1,44 @@
+# =============================================================================
+# Smart Plant — retained-MQTT transport profile
+# =============================================================================
+# Compose with smart_plant_core.yaml. Retained discovery/state keeps the latest
+# readings visible while the device sleeps. The native API is enabled only for
+# ESPHome dashboard metadata; do not also add the device through the ESPHome
+# Home Assistant integration, which would create duplicate entities.
+# =============================================================================
+
+substitutions:
+  mqtt_topic_prefix: "${device_name}"
+  mqtt_broker: ""
+  mqtt_username: ""
+  mqtt_password: ""
+
+esphome:
+  on_boot:
+    priority: 600
+    then:
+      - wait_until:
+          condition:
+            mqtt.connected:
+          timeout: 30s
+      - script.execute: consider_deep_sleep
+
+mqtt:
+  broker: "${mqtt_broker}"
+  username: "${mqtt_username}"
+  password: "${mqtt_password}"
+  discovery: true
+  discovery_retain: true
+  birth_message:
+  will_message:
+  log_topic:
+  topic_prefix: "${mqtt_topic_prefix}"
+
+api:
+  encryption:
+    key: "${api_encryption_key}"
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+    password: "${ota_password}"

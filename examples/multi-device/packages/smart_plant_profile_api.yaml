@@ -1,0 +1,21 @@
+# =============================================================================
+# Smart Plant — native-API transport profile
+# =============================================================================
+# Compose with smart_plant_core.yaml. This is the simpler Home Assistant path,
+# but entities become unavailable between wake cycles because API state is not
+# retained. The profile has no broker dependency.
+# =============================================================================
+
+esphome:
+  on_boot:
+    priority: 600
+    then:
+      - script.execute: consider_deep_sleep
+
+api:
+  encryption:
+    key: "${api_encryption_key}"
+
+ota:
+  - platform: esphome
+    password: "${ota_password}"
