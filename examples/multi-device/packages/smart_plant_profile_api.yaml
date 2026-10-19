@@ -8,9 +8,15 @@
 
 esphome:
   on_boot:
-    priority: 600
-    then:
-      - script.execute: consider_deep_sleep
+    # GPIO switches initialize at priority 800 and sensors at 600. Settle the
+    # switched I2C rail between those phases, then acquire after the display
+    # (priority 400) has finished setup.
+    - priority: 700
+      then:
+        - lambda: 'delay(250);'
+    - priority: 399.0
+      then:
+        - script.execute: acquire_normal
 
 api:
   encryption:

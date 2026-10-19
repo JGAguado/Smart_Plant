@@ -49,6 +49,25 @@ substitutions:
   hum_min: "20"
   hum_max: "80"
 
+  # The legacy Waveshare driver returns before the active-high BUSY signal has
+  # completed every physical refresh. These bounded windows prevent sleep from
+  # cutting power while the panel is still updating.
+  display_busy_gpio: "14"
+  display_reset_gpio: "15"
+  display_busy_assert_timeout: "2s"
+  display_busy_clear_timeout: "30s"
+  display_busy_recovery_timeout: "30s"
+
+globals:
+  - id: display_busy_seen
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: display_safe_to_sleep
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+
 esphome:
   name: "${device_name}"
   name_add_mac_suffix: true
@@ -130,9 +149,6 @@ time:
       - "162.159.200.1"    # Cloudflare NTP (anycast, IP stable)
       - "216.239.35.0"     # Google NTP
       - "pool.ntp.org"
-    on_time_sync:
-      then:
-        - component.update: my_display
 
 switch:
   - platform: gpio
@@ -145,6 +161,7 @@ switch:
 sensor:
   - platform: max17043
     id: max17043_id
+    update_interval: never
     battery_voltage:
       id: batvolt
       name: "${friendly_name} Battery voltage"
@@ -157,6 +174,7 @@ sensor:
       force_update: true
 
   - platform: aht10
+    id: aht20_sensor
     variant: AHT20
     i2c_id: bus_a
     temperature:
@@ -171,11 +189,12 @@ sensor:
       icon: "mdi:water-percent"
       device_class: humidity
       force_update: true
-    update_interval: 3s
+    update_interval: never
 
   - platform: veml7700
+    id: veml7700_sensor
     address: 0x10
-    update_interval: 3s
+    update_interval: never
     ambient_light:
       name: "${friendly_name} Ambient light"
       id: light
@@ -192,7 +211,7 @@ sensor:
     id: soil
     icon: "mdi:cup-water"
     device_class: moisture
-    update_interval: 3s
+    update_interval: never
     unit_of_measurement: "%"
     attenuation: 12db
     force_update: true
@@ -200,6 +219,14 @@ sensor:
       - median:
           window_size: 5
           send_every: 5
+          send_first_at: 5
+      # Reject disconnected/shorted readings before applying the percentage
+      # calibration. An invalid voltage therefore remains unavailable instead
+      # of becoming a plausible-looking 0% or 100% value.
+      - clamp:
+          min_value: 0.5
+          max_value: 3.3
+          ignore_out_of_range: true
       - calibrate_linear:
           - ${soil_v_wet} -> 100.00
           - ${soil_v_dry} -> 0.00
@@ -210,8 +237,8 @@ display:
   - platform: waveshare_epaper
     cs_pin: GPIO10
     dc_pin: GPIO13
-    busy_pin: GPIO14
-    reset_pin: GPIO15
+    busy_pin: GPIO${display_busy_gpio}
+    reset_pin: GPIO${display_reset_gpio}
     rotation: 270
     model: 2.90inv2
     id: my_display
@@ -222,17 +249,21 @@ display:
         lambda: |-
           it.image(0, 0, id(page_1_background));
 
-          float battery_perc = id(batpercent).state;
-          int battery_range = battery_perc / 16;
-          battery_range = (battery_range > 6) ? 6 : battery_range;
-          battery_range = (battery_range < 0)  ? 0 : battery_range;
-
-          const char* battery_icon_map[] = {
-            "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
-            "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
-          };
-          it.printf(278, 1, id(font_icon), TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
-          it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
+          bool battery_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
+          if (battery_valid) {
+            float battery_perc = id(batpercent).state;
+            int battery_range = static_cast<int>(battery_perc / 16.0f);
+            battery_range = (battery_range > 6) ? 6 : battery_range;
+            battery_range = (battery_range < 0)  ? 0 : battery_range;
+            const char* battery_icon_map[] = {
+              "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
+              "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
+            };
+            it.printf(278, 1, id(font_icon), TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
+            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
+          } else {
+            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, " --%%");
+          }
 
           auto now = id(esptime).now();
           if (now.is_valid()) {
@@ -248,7 +279,11 @@ display:
           int radius = 22;
           int thick = 7;
 
-          auto draw_gauge = [&](float value, float vmin, float vmax, int xc, int yc, const char* fmt) {
+          auto draw_gauge = [&](float value, bool valid, float vmin, float vmax, int xc, int yc, const char* fmt) {
+            if (!valid || !std::isfinite(value)) {
+              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, "--");
+              return;
+            }
             if (value < vmin) value = vmin;
             if (value > vmax) value = vmax;
             float val = (value - vmin) / abs(vmax - vmin) * alpha;
@@ -264,32 +299,163 @@ display:
             it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, fmt, value);
           };
 
-          draw_gauge(id(soil).state,  0,            100,            80,  50, "%.0f%%");
-          draw_gauge(id(light).state, 0,            ${light_max},  134,  70, "%.0flx");
-          draw_gauge(id(temp).state,  ${temp_min},  ${temp_max},   188,  50, "%.0f°C");
-          draw_gauge(id(hum).state,   ${hum_min},   ${hum_max},    242,  70, "%.0f%%");
+          draw_gauge(id(soil).state,  id(soil).has_state(),  0,           100,          80,  50, "%.0f%%");
+          draw_gauge(id(light).state, id(light).has_state(), 0,           ${light_max}, 134, 70, "%.0flx");
+          draw_gauge(id(temp).state,  id(temp).has_state(),  ${temp_min}, ${temp_max},  188, 50, "%.0f°C");
+          draw_gauge(id(hum).state,   id(hum).has_state(),   ${hum_min},  ${hum_max},   242, 70, "%.0f%%");
 
 deep_sleep:
   id: deep_sleep_control
   sleep_duration: 1h
 
 script:
-  - id: consider_deep_sleep
-    mode: queued
+  # Each sensor is triggered only as often as its own conversion/filter needs.
+  # All waits are bounded, so a failed sensor cannot keep the device awake.
+  - id: acquire_normal
+    mode: restart
     then:
-      - delay: 5s
+      - switch.turn_on: exc
+      - component.update: max17043_id
+      - wait_until:
+          condition:
+            lambda: 'return id(batpercent).has_state() && std::isfinite(id(batpercent).state);'
+          timeout: 3s
+      - component.update: aht20_sensor
+      - component.update: veml7700_sensor
+      - wait_until:
+          condition:
+            lambda: |-
+              return id(temp).has_state() && std::isfinite(id(temp).state) &&
+                     id(hum).has_state() && std::isfinite(id(hum).state);
+          timeout: 3s
+      - wait_until:
+          condition:
+            lambda: 'return id(light).has_state() && std::isfinite(id(light).state);'
+          timeout: 5s
+      - repeat:
+          count: 5
+          then:
+            - component.update: soil
+            - delay: 3s
+      - wait_until:
+          condition:
+            lambda: 'return id(soil).has_state() && std::isfinite(id(soil).state);'
+          timeout: 3s
+      - wait_until:
+          condition:
+            lambda: 'return id(esptime).now().is_valid();'
+          timeout: 10s
+      - script.execute: render_and_sleep
+
+  - id: render_and_sleep
+    mode: restart
+    then:
+      - display.page.show: page1
       - component.update: my_display
-      - delay: 5s
+      - script.execute: settle_display
+      - script.wait: settle_display
       - if:
           condition:
-            sensor.in_range:
-              id: batpercent
-              above: 90
+            lambda: 'return id(display_safe_to_sleep);'
           then:
-            - deep_sleep.prevent: deep_sleep_control
+            - script.execute: enter_deep_sleep
           else:
+            - deep_sleep.prevent: deep_sleep_control
+            - script.execute: recover_display_busy
+
+  # Observe the panel's physical active-high BUSY cycle. A fixed delay is not
+  # evidence that the e-paper refresh has completed.
+  - id: settle_display
+    mode: restart
+    then:
+      # A new refresh invalidates recovery and delayed sleep from any older one.
+      - script.stop: recover_display_busy
+      - script.stop: enter_deep_sleep
+      - lambda: |-
+          id(display_busy_seen) = false;
+          id(display_safe_to_sleep) = false;
+      - delay: 100ms
+      - wait_until:
+          condition:
+            lambda: 'return digitalRead(${display_busy_gpio}) == HIGH;'
+          timeout: ${display_busy_assert_timeout}
+      - if:
+          condition:
+            lambda: 'return digitalRead(${display_busy_gpio}) == HIGH;'
+          then:
+            - lambda: 'id(display_busy_seen) = true;'
+            - wait_until:
+                condition:
+                  lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
+                timeout: ${display_busy_clear_timeout}
+      - lambda: |-
+          id(display_safe_to_sleep) = id(display_busy_seen) &&
+                                      digitalRead(${display_busy_gpio}) == LOW;
+      - if:
+          condition:
+            lambda: 'return id(display_safe_to_sleep);'
+          then:
+            - delay: 500ms
+          else:
+            - logger.log:
+                level: ERROR
+                format: "E-paper refresh did not complete inside the BUSY window"
+
+  # If BUSY clears late, resume normal sleep. A permanently asserted signal is
+  # bounded too: reset the panel, then sleep rather than draining the battery.
+  - id: recover_display_busy
+    mode: restart
+    then:
+      - wait_until:
+          condition:
+            lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
+          timeout: ${display_busy_recovery_timeout}
+      - if:
+          condition:
+            lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
+          then:
+            - delay: 500ms
+            # Re-read after the guard: a newer refresh may have asserted BUSY.
+            - if:
+                condition:
+                  lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
+                then:
+                  - lambda: 'id(display_safe_to_sleep) = true;'
+                  - script.execute: enter_deep_sleep
+                else:
+                  - script.execute: recover_display_busy
+          else:
+            - logger.log:
+                level: ERROR
+                format: "E-paper BUSY stuck; resetting panel before emergency sleep"
+            - lambda: |-
+                pinMode(${display_reset_gpio}, OUTPUT);
+                digitalWrite(${display_reset_gpio}, LOW);
+            - delay: 10ms
+            - lambda: 'digitalWrite(${display_reset_gpio}, HIGH);'
+            - delay: 500ms
+            - safe_mode.mark_successful
+            - deep_sleep.allow: deep_sleep_control
             - switch.turn_off: exc
-            - max17043.sleep_mode: max17043_id
             - deep_sleep.enter: deep_sleep_control
-      - delay: 25s
-      - script.execute: consider_deep_sleep
+
+  - id: enter_deep_sleep
+    mode: restart
+    then:
+      # Let the selected transport flush its final sensor states before the
+      # Wi-Fi and switched sensor rail disappear.
+      - delay: 1s
+      - if:
+          condition:
+            lambda: |-
+              return id(display_safe_to_sleep) &&
+                     digitalRead(${display_busy_gpio}) == LOW;
+          then:
+            # Version-agnostic OTA rollback protection for short wake cycles.
+            - safe_mode.mark_successful
+            - deep_sleep.allow: deep_sleep_control
+            - switch.turn_off: exc
+            - deep_sleep.enter: deep_sleep_control
+          else:
+            - deep_sleep.prevent: deep_sleep_control
+            - script.execute: recover_display_busy

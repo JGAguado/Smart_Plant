@@ -15,13 +15,16 @@ substitutions:
 
 esphome:
   on_boot:
-    priority: 600
-    then:
-      - wait_until:
-          condition:
-            mqtt.connected:
-          timeout: 30s
-      - script.execute: consider_deep_sleep
+    - priority: 700
+      then:
+        - lambda: 'delay(250);'
+    - priority: 399.0
+      then:
+        - wait_until:
+            condition:
+              mqtt.connected:
+            timeout: 30s
+        - script.execute: acquire_normal
 
 mqtt:
   broker: "${mqtt_broker}"
