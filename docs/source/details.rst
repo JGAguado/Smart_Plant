@@ -144,6 +144,7 @@ Ambient temperature & humidity
 .. figure:: images/getting_started/aht20.png
     :align: left
     :figwidth: 100px
+
 The |Product| embeds an AHT20 temperature and humidity sensor ready to deliver calibrated data through the :math:`I^2C` bus.
 
 This sensor has an operational relative humidity range of 0 to 100% ( with a ±3 % typical accuracy), and a temperature range of -40 to 85 °C (±1 °C typical accuracy)

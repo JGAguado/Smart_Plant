@@ -62,5 +62,6 @@ please contact me directly:
    details
    getting_started
    design   
+   specs
    glossary
    faq 

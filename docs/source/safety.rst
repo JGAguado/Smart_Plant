@@ -1,5 +1,5 @@
 🦺 Safety guidelines
-=================
+====================
 
 These safety guidelines, the operation instructions and the limit values listed in :doc:`specs` are to be read carefully before operating the product.
 
@@ -9,7 +9,7 @@ These safety guidelines, the operation instructions and the limit values listed 
 
  
 :term:`LiPo` battery powered
-----------------------
+----------------------------
 .. figure:: images/safety/lipo.png
     :align: right
     :figwidth: 100px
@@ -72,5 +72,4 @@ Restriction of Hazardous Substances
 The :term:`PCB` and the electronic components mounted on the |Product| have been manufactured attending to the EU rules 
 restricting the use of hazardous substances (RoHS) in electrical and electronic equipment to protect the 
 environment and public health. 
-
 

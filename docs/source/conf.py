@@ -12,8 +12,8 @@ email = 'jon-garcia@hotmail.com'
 release = 'R1'
 version = 'V2'
 
-today = date.today()
-compile_date = today.strftime("%B %d, %Y")
+today = date.today().strftime("%B %d, %Y")
+compile_date = today
 
 # -- Project information
 
@@ -46,6 +46,10 @@ intersphinx_mapping = {
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
+
+# Printables serves a Cloudflare browser challenge to automated link checkers;
+# the community-model page remains a valid interactive browser link.
+linkcheck_ignore = [r'https://www\.printables\.com/.*']
 
 templates_path = ['_templates']
 

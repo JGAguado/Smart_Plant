@@ -2,7 +2,7 @@
 =============================
 
 When trying to flash the |Product| with `ESPHome Web <https://web.esphome.io>`_ , I get a spinning ring with "connecting" for a few seconds and then it errors out with "Failed to initialize".
-    This is an issue related to `ESPHome Web <https://web.esphome.io>`_ when trying to flash ESP32-S2 modules and (at the moment of writing this guide) is still unsolved. Please check alternative ways (on the :ref:`esphome` programming section) of flashing the |Product|. 
+    This is an issue related to `ESPHome Web <https://web.esphome.io>`_ when trying to flash ESP32-S2 modules and (at the moment of writing this guide) is still unsolved. Please check alternative ways (on the :ref:`programming-esphome` programming section) of flashing the |Product|.
 
 After connecting the battery, I don't see the e-paper refresh or any LED on.
     The two LEDs that are on the board (STDBY & CHRG) only indicate the state of the battery while charging (USB-C or solar panel). The way to 
@@ -25,7 +25,7 @@ When I try to compile the given YAML and upload it into the board I get some err
     on the configuration we are asking for some files (the fonts that you want for the digits or the icons and the background image with the plant and the gauges).
     
     Therefore you need to upload into the folder with the configuration YAML file the required files. I strongly suggest to use Visual studio code and just drag and 
-    drop the items according to the structure mentioned on the :ref:`esphome` programming section.
+    drop the items according to the structure mentioned on the :ref:`programming-esphome` programming section.
 
 How is the time handled in the board? 
     The time is handled by the ESP32 internal RTC to keep the design compact and straightforward. Therefore the deep-sleep timing is not very 

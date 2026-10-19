@@ -13,9 +13,8 @@ esphome:
   project:
     name: "${project_name}"
     version: "${project_version}"
-  # Start the main loop immediately after boot. SNTP sync is handled
-  # asynchronously via on_time_sync below, which triggers a display refresh
-  # the moment time becomes valid — no fixed delay needed.
+  # Run one bounded boot workflow. It waits briefly for valid time, refreshes the
+  # display once, marks the OTA image valid, and enters deep sleep.
   on_boot:
     priority: 600
     then:
@@ -110,10 +109,6 @@ time:
       - "162.159.200.1"    # Cloudflare NTP (stable anycast IP — no DNS needed)
       - "216.239.35.0"     # Google NTP
       - "pool.ntp.org"     # fallback
-    on_time_sync:
-      then:
-        - component.update: my_display
-
 switch:
   - platform: gpio
     pin: GPIO4
@@ -383,22 +378,19 @@ deep_sleep:
 
 script:
   - id: consider_deep_sleep
-    mode: queued
+    mode: single
     then:
-      - delay: 5s
-      - component.update: my_display   
-      - delay: 5s           
-      - if:
+      - wait_until:
           condition:
-            sensor.in_range:
-              id: batpercent
-              above: 95
-          then:
-            - deep_sleep.prevent: deep_sleep_control 
-          else:
-            - switch.turn_off: exc              # Cut sensor power before sleep
-            - max17043.sleep_mode: max17043_id  # Fuel gauge low-power mode
-            - deep_sleep.enter: deep_sleep_control 
-
-      - delay: 25s
-      - script.execute: consider_deep_sleep
+            lambda: 'return id(esptime).now().is_valid();'
+          timeout: 10s
+      - component.update: my_display
+      - delay: 5s
+      # A normal cycle can finish before ESPHome's default 60-second OTA
+      # validation window. Mark the image valid before deep sleep resets it.
+      - safe_mode.mark_successful
+      - switch.turn_off: exc              # Cut sensor power before sleep
+      # The MAX17048 fuel gauge stays powered from VBAT and hibernates
+      # automatically; no host action is needed (max17043.sleep_mode is a no-op
+      # on the MAX17048 until explicit model support ships in stable ESPHome).
+      - deep_sleep.enter: deep_sleep_control

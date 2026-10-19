@@ -7,12 +7,16 @@ There are two main programming methods supported and tested with the |Product|:
  * Arduino
 
 .. _flashing:
+
 In both scenarios, and if you are using the USB port or the Serial port for programming it, you
 will first need to enter the board into flashing mode: press and hold the *Flash* pushbutton
 while you reset the board (pressing once the *Reset* pushbutton).
 
 .. Caution::
     When flashing the board, make sure its only powered by the USB/Serial port.
+
+.. _programming-esphome:
+
 ESPHome
 ---------
 `ESPHome <https://esphome.io>`_ is a well known platform for programming ESP-based devices 
@@ -50,21 +54,32 @@ the one I strongly recommend is the one through the `ESPHome Add-on for Home Ass
 
 
 .. Important::
-    Note that with this example code, the Smart Plant enters into deep-sleep mode if the battery level is under 95% (see ``consider_deep_sleep`` script at the end of the file), so be aware that if you want to flash it :term:`OTA`, make sure the battery is fully charged or the Smart Plant powered via USB-C.
+    This example performs one bounded measurement/display cycle and then enters
+    deep sleep. Battery charge does not keep it awake for OTA. To install an
+    update, power the board through USB-C or start the upload during its short
+    awake window. Deployments that need retained telemetry while devices sleep
+    can use the MQTT package under ``examples/multi-device``.
 
     
 .. Note::
     The Smart Plant integrates a *battery gauge* sensor (MAX17043/MAX17048).
     ESPHome includes a **native** ``max17043`` component — no ``external_components``
-    are needed. The example configuration above already uses it. The native component
-    also provides a ``sleep_mode`` action used in the ``consider_deep_sleep`` script
-    to put the fuel gauge into low-power mode before entering deep sleep.
+    are needed. The example configuration above already uses it.
+
+    The gauge is powered permanently from the battery (VBAT), so it keeps
+    tracking the state of charge across deep sleep. No host action is required
+    to save power during sleep: the MAX17048 enters its automatic hibernate mode
+    when cell activity is low and wakes automatically. Do not call the native
+    component's ``sleep_mode`` action for a MAX17048 unless the selected stable
+    ESPHome release explicitly supports that model: older releases do not set
+    the required ``MODE.EnSleep`` bit, and cutting the switched sensor rail also
+    removes the I²C pull-ups needed to communicate with the gauge.
 
 
 .. Note::
     ``Lemon_tree_label_page_1.png`` is the background image that will be displayed on the e-paper. For having always a styled background image, I made a `python script <https://github.com/JGAguado/Label-maker>`_ that generates the image of the plant, the title and the parameter 
     gauges out of a JSON config file. Alternativelly, you can use any photo editor of your choice, but keep in mind the display size 
-    (296x128 pixel) and the center of each gauges (indicated in the YAML code). In this example, it is obtained from an URL, but you can upload yours locally following the `ESPHome guide <https://esphome.io/components/display/index.html#images>`_
+    (296x128 pixel) and the center of each gauges (indicated in the YAML code). In this example, it is obtained from an URL, but you can upload yours locally following the `ESPHome image guide <https://esphome.io/components/image/>`_
 
     .. image:: images/programming/Lemon_tree_label_page_1.png
         :width: 150px

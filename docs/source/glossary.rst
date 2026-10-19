@@ -43,6 +43,9 @@
    LDO
        Low-Dropout regulator 
 
+   LiPo
+       Lithium polymer battery
+
    RGBW
        Red-Green-Blue-White
 
@@ -75,4 +78,3 @@
 
    SLA
        Stereolithography
-    

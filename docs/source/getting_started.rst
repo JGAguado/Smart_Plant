@@ -1,5 +1,5 @@
 🚀 Getting started
-===============
+==================
   
     Trust me, I know what I'm doing...
 

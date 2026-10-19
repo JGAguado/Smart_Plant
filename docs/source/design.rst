@@ -14,7 +14,7 @@ Electronic schematics
 .. _pcb:
 
 :term:`PCB`
-----------
+-----------
 
 .. raw:: html
 
@@ -99,7 +99,7 @@ Technical Specifications
 -------------------------
 
 Microcontroller 
-^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
 .. list-table:: 
     :widths: 50 80
     :stub-columns: 1

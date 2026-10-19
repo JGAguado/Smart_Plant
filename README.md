@@ -19,6 +19,16 @@ The Smart Plant is a board that can be plugged directly on the soil, close to th
 
 <li><a href="./README.md">README.md</a></li>
 
+## ESPHome firmware paths
+
+- The [programming guide](./docs/source/programming.rst) and its standalone
+  configuration are the simplest starting point for one device using the
+  native ESPHome API.
+- The [multi-device example](./examples/multi-device/my-lemon-tree.yaml) and
+  [shared package](./examples/multi-device/packages/smart_plant_base.yaml)
+  demonstrate retained MQTT telemetry for deployments where values should
+  remain visible while devices sleep.
+
 
 
 [documentation-shield]: https://readthedocs.org/projects/smart-plant/badge/?version=v2r1&style=for-the-badge
