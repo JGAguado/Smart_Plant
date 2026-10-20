@@ -136,3 +136,9 @@ Run the offline package tests with `python3 -B -m unittest discover -s tests -v`
 They execute the package actions and compile the policy lambdas as C++ with
 simulated sensors, time and GPIO. Firmware compilation checks ESPHome schemas
 and generated code. Neither check proves physical panel or network behavior.
+
+## Optional label generation
+
+Use the [generic label generator](label_maker/README.md) to keep recommendation
+bands and firmware needle scales aligned. Its example uses synthetic values.
+It does not read Home Assistant or any device inventory.

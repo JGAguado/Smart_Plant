@@ -1,0 +1,39 @@
+size:
+- 296
+- 128
+angle_degrees: 270
+radius: 22
+arc_thickness: 5
+metrics:
+  moisture:
+    position:
+    - 80
+    - 50
+    label: SOIL
+    scale:
+    - 0
+    - 100
+  illuminance:
+    position:
+    - 134
+    - 70
+    label: LUX
+    scale:
+    - 0
+    - 3775
+  temperature:
+    position:
+    - 188
+    - 50
+    label: TEMP
+    scale:
+    - -10
+    - 50
+  humidity:
+    position:
+    - 242
+    - 70
+    label: RH
+    scale:
+    - 20
+    - 80
