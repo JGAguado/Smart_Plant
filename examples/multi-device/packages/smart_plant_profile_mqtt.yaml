@@ -1,10 +1,14 @@
 # =============================================================================
-# Smart Plant — retained-MQTT transport profile
+# Smart Plant — MQTT transport profile (advanced)
 # =============================================================================
-# Compose with smart_plant_core.yaml. Retained discovery/state keeps the latest
-# readings visible while the device sleeps. The native API is enabled only for
-# ESPHome dashboard metadata; do not also add the device through the ESPHome
-# Home Assistant integration, which would create duplicate entities.
+# Compose with smart_plant_core.yaml. Adds the MQTT data path (retained values
+# survive deep sleep), retained remote control (Maintenance / Storage Mode),
+# native ESPHome OTA (Device Builder push), and the boot orchestration. Requires
+# deep-sleep-friendly retained state.
+#
+#   packages:
+#     core:      !include packages/smart_plant_core.yaml
+#     transport: !include packages/smart_plant_profile_mqtt.yaml
 # =============================================================================
 
 substitutions:
@@ -13,30 +17,81 @@ substitutions:
   mqtt_username: ""
   mqtt_password: ""
 
+globals:
+  - id: maintenance_requested
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: boot_sequence_complete
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: maintenance_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  # The accepted seasonal state is the only Storage Mode value persisted.
+  # The requested state starts from it and is overridden by retained MQTT when
+  # the broker is reachable.
+  - id: storage_requested
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: storage_display_refresh_pending
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+  - id: preserve_maintenance_status
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
 esphome:
   on_boot:
+    # GPIO switches initialize at HARDWARE priority 800 and MAX17043 at DATA
+    # priority 600. Block setup between them so the switched I2C rail is stable
+    # before the fuel gauge performs its one supported wake/config setup.
     - priority: 700
       then:
         - lambda: 'delay(250);'
+    # Retained MQTT state handling suspends until MQTT is connected; this keeps
+    # cycle preparation after the remaining component setup work.
     - priority: 399.0
       then:
+        - lambda: 'id(storage_requested) = id(storage_active);'
         - wait_until:
             condition:
               mqtt.connected:
             timeout: 30s
-        - script.execute: acquire_normal
+        # Retained desired-state commands arrive immediately after MQTT connect,
+        # but connection itself does not guarantee their callbacks have run.
+        - delay: 1s
+        - lambda: 'id(boot_sequence_complete) = true;'
+        - script.execute: prepare_cycle
 
+# MQTT — required for deep-sleep compatibility: retained values survive sleep
+# so Home Assistant sees fresh data on wake without "unavailable" state.
+# MQTT is kept as the data source for Home Assistant (retained values survive
+# deep sleep). The native API below is enabled ONLY so the ESPHome dashboard can
+# read rich device metadata (mac / config_hash / version) via the _esphomelib._tcp
+# mDNS record — MQTT-only devices advertise _http._tcp with `version` alone.
+# Do NOT add these devices to Home Assistant via the ESPHome (API) integration,
+# or you get duplicate entities that go unavailable during sleep. Keep them on MQTT.
 mqtt:
+  id: mqtt_client
+  topic_prefix: "${mqtt_topic_prefix}"
   broker: "${mqtt_broker}"
   username: "${mqtt_username}"
   password: "${mqtt_password}"
   discovery: true
   discovery_retain: true
-  birth_message:
+  birth_message:    # disabled — prevents HA marking device offline during sleep
   will_message:
-  log_topic:
-  topic_prefix: "${mqtt_topic_prefix}"
+  log_topic:        # disabled — saves bandwidth on wake
 
+# Native API — dashboard metadata only (see note above). reboot_timeout: 0s so a
+# sleeping device with no API client connected doesn't reboot itself.
+# Supply api_encryption_key from the device's local secrets.yaml.
 api:
   encryption:
     key: "${api_encryption_key}"
@@ -45,3 +100,427 @@ api:
 ota:
   - platform: esphome
     password: "${ota_password}"
+    # on_end runs only after the image has been transferred successfully and
+    # immediately before the OTA reboot. Clear the one-shot retained request so
+    # the new firmware performs a normal measurement/display/sleep cycle.
+    on_end:
+      then:
+        # The old deadline must not start a display refresh during this final
+        # retained-message flush before the OTA reboot.
+        - script.stop: maintenance_watchdog
+        - lambda: |-
+            id(maintenance_requested) = false;
+            id(maintenance_active) = false;
+        - switch.template.publish:
+            id: maintenance_control
+            state: OFF
+        - mqtt.publish:
+            topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/maintenance";'
+            payload: "OFF"
+            qos: 1
+            retain: true
+        - text_sensor.template.publish:
+            id: maintenance_status
+            state: "OFF"
+        - if:
+            condition:
+              lambda: 'return id(storage_active);'
+            then:
+              # Never start a physical refresh immediately before OTA reboot.
+              # Persist a one-shot request that the new image services after
+              # boot, where BUSY can be observed through completion.
+              - lambda: 'id(storage_display_refresh_pending) = true;'
+        - delay: 2s
+
+switch:
+  # Native MQTT-discovered control: ESPHome associates it with the same device
+  # as the plant sensors. Keep the established retained command topic so
+  # existing operators and automations remain compatible.
+  - platform: template
+    id: maintenance_control
+    name: "Maintenance"
+    icon: "mdi:wrench-cog"
+    optimistic: true
+    command_topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/maintenance";'
+    command_retain: true
+    subscribe_qos: 1
+    qos: 1
+    retain: true
+    turn_on_action:
+      - lambda: 'id(maintenance_requested) = true;'
+      # A repeated ON renews the window. The old deadline must not fire while
+      # the new battery sample or display refresh is still in progress.
+      - script.stop: maintenance_watchdog
+      - if:
+          condition:
+            lambda: 'return id(boot_sequence_complete);'
+          then:
+            - script.execute: prepare_cycle
+    turn_off_action:
+      - lambda: 'id(maintenance_requested) = false;'
+      - if:
+          condition:
+            lambda: 'return id(boot_sequence_complete);'
+          then:
+            - if:
+                condition:
+                  lambda: 'return id(maintenance_active);'
+                then:
+                  - script.stop: prepare_cycle
+                  - script.execute: decide_sleep
+                else:
+                  # Cancel pending admission. Ignore OFF echoes after rejection
+                  # or exit, which must not start a second acquisition cycle.
+                  - if:
+                      condition:
+                        script.is_running: prepare_cycle
+                      then:
+                        - script.execute: prepare_cycle
+
+  - platform: template
+    id: storage_control
+    name: "Storage Mode"
+    icon: "mdi:archive-outline"
+    optimistic: true
+    command_topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/storage_mode";'
+    command_retain: true
+    subscribe_qos: 1
+    qos: 1
+    retain: true
+    # Storage has no renewable window. Equal desired-state commands, including
+    # our retained OFF echo, must not restart pending or completed cycle work.
+    turn_on_action:
+      - if:
+          condition:
+            lambda: 'return !id(storage_requested);'
+          then:
+            - lambda: 'id(storage_requested) = true;'
+            - if:
+                condition:
+                  lambda: 'return id(boot_sequence_complete) && !id(maintenance_active);'
+                then:
+                  - script.execute: prepare_cycle
+    turn_off_action:
+      - if:
+          condition:
+            lambda: 'return id(storage_requested);'
+          then:
+            - lambda: 'id(storage_requested) = false;'
+            - if:
+                condition:
+                  lambda: 'return id(boot_sequence_complete) && !id(maintenance_active);'
+                then:
+                  - script.execute: prepare_cycle
+
+text_sensor:
+  # Publish the actual state-machine result through a native entity so Home
+  # Assistant attaches it to the plant's MQTT device. REJECTED_LOW_BATTERY is
+  # intentionally distinct from the requested ON/OFF control state.
+  - platform: template
+    id: maintenance_status
+    name: "Maintenance Status"
+    icon: "mdi:information-outline"
+    entity_category: diagnostic
+    update_interval: never
+    state_topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/status/maintenance";'
+    qos: 1
+    retain: true
+
+  - platform: template
+    id: storage_status
+    name: "Storage Mode Status"
+    icon: "mdi:archive-check-outline"
+    entity_category: diagnostic
+    update_interval: never
+    state_topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/status/storage_mode";'
+    qos: 1
+    retain: true
+
+script:
+  # Called by force_sleep_after_busy_fault (core) when a permanent BUSY fault
+  # triggers the emergency sleep path. Publishes the NVS-backed fault counter
+  # retained so Home Assistant reflects the current count after each wake.
+  - id: on_display_fault
+    then:
+      - mqtt.publish:
+          topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/status/display_fault_count";'
+          payload: !lambda 'return to_string(id(display_busy_fault_count));'
+          qos: 1
+          retain: true
+      - delay: 1s
+
+  - id: sleep_after_display
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_safe_to_sleep);'
+          then:
+            - script.execute: enter_deep_sleep
+          else:
+            # Recover within one total budget. A terminal timeout resets the
+            # panel and enters the bounded emergency sleep path.
+            - deep_sleep.prevent: deep_sleep_control
+            - text_sensor.template.publish:
+                id: maintenance_status
+                state: "DISPLAY_BUSY_TIMEOUT"
+            - logger.log:
+                level: ERROR
+                format: "E-paper remains BUSY; starting bounded recovery"
+            - script.execute: recover_display_busy
+
+  # Choose the smallest acquisition path only after retained MQTT commands have
+  # had a chance to override the persisted Storage Mode state.
+  - id: prepare_cycle
+    mode: restart
+    then:
+      # A newer retained command owns the whole pending cycle. Cancel children
+      # as well as this restartable parent before choosing the next acquisition.
+      - script.stop: decide_sleep
+      - script.stop: enter_storage
+      - script.stop: exit_storage
+      - script.stop: exit_maintenance
+      - script.stop: acquire_normal
+      - script.stop: render_measurement_page
+      - script.stop: sample_battery
+      - script.execute: prepare_display_refresh
+      - if:
+          condition:
+            lambda: 'return id(maintenance_requested);'
+          then:
+            - script.execute: sample_battery
+            - script.wait: sample_battery
+            - wait_until:
+                condition:
+                  lambda: 'return id(esptime).now().is_valid();'
+                timeout: 10s
+            - script.execute: decide_sleep
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(storage_requested);'
+                then:
+                  # Every daily Storage wake updates the only operational
+                  # sensor that matters while the plant sensors are gated.
+                  - script.execute: sample_battery
+                  - script.wait: sample_battery
+                  - script.execute: decide_sleep
+                else:
+                  - script.execute: acquire_normal
+
+  - id: decide_sleep
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(maintenance_requested);'
+          then:
+            - if:
+                condition:
+                  lambda: |-
+                    return id(batpercent).has_state() &&
+                           std::isfinite(id(batpercent).state) &&
+                           id(batpercent).state >= ${ota_min_battery};
+                then:
+                  - lambda: |-
+                      id(maintenance_active) = true;
+                      auto now = id(esptime).now();
+                      if (now.is_valid()) {
+                        int end_minutes = now.hour * 60 + now.minute +
+                                          ${maintenance_timeout_minutes};
+                        id(maintenance_end_hour) = (end_minutes / 60) % 24;
+                        id(maintenance_end_minute) = end_minutes % 60;
+                      } else {
+                        id(maintenance_end_hour) = -1;
+                        id(maintenance_end_minute) = -1;
+                      }
+                  - deep_sleep.prevent: deep_sleep_control
+                  - display.page.show: page_maintenance
+                  - script.execute: prepare_display_refresh
+                  - component.update: my_display
+                  - script.execute: settle_display
+                  - script.wait: settle_display
+                  - if:
+                      condition:
+                        lambda: 'return id(display_settle_ok);'
+                      then:
+                        # ON is the OTA readiness handshake and is emitted only
+                        # after an observed BUSY HIGH -> LOW refresh cycle.
+                        - text_sensor.template.publish:
+                            id: maintenance_status
+                            state: "ON"
+                        - script.execute: maintenance_watchdog
+                      else:
+                        - text_sensor.template.publish:
+                            id: maintenance_status
+                            state: "DISPLAY_REFRESH_FAILED"
+                        - script.execute: sleep_after_display
+                else:
+                  - lambda: |-
+                      id(maintenance_requested) = false;
+                      id(maintenance_active) = false;
+                      id(preserve_maintenance_status) = true;
+                  - switch.template.publish:
+                      id: maintenance_control
+                      state: OFF
+                  - mqtt.publish:
+                      topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/maintenance";'
+                      payload: "OFF"
+                      qos: 1
+                      retain: true
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(batpercent).has_state() &&
+                                 std::isfinite(id(batpercent).state);
+                      then:
+                        - text_sensor.template.publish:
+                            id: maintenance_status
+                            state: "REJECTED_LOW_BATTERY"
+                      else:
+                        - text_sensor.template.publish:
+                            id: maintenance_status
+                            state: "BATTERY_UNAVAILABLE"
+                  - if:
+                      condition:
+                        lambda: 'return id(storage_requested);'
+                      then:
+                        - script.execute: enter_storage
+                      else:
+                        # Admission samples only the battery. Acquire the plant
+                        # states before returning to the normal display cycle.
+                        - script.execute: acquire_normal
+          else:
+            - script.stop: maintenance_watchdog
+            - if:
+                condition:
+                  lambda: 'return id(maintenance_active);'
+                then:
+                  - script.execute: exit_maintenance
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return id(storage_requested);'
+                      then:
+                        - script.execute: enter_storage
+                      else:
+                        - if:
+                            condition:
+                              lambda: 'return id(storage_active);'
+                            then:
+                              - script.execute: exit_storage
+                            else:
+                              - if:
+                                  condition:
+                                    lambda: 'return !id(preserve_maintenance_status);'
+                                  then:
+                                    - text_sensor.template.publish:
+                                        id: maintenance_status
+                                        state: "OFF"
+                              - text_sensor.template.publish:
+                                  id: storage_status
+                                  state: "OFF"
+                              - script.execute: render_measurement_page
+                              - script.wait: render_measurement_page
+                              - script.execute: sleep_after_display
+
+  - id: maintenance_watchdog
+    mode: restart
+    then:
+      - delay: ${maintenance_timeout}
+      - script.execute: exit_maintenance
+
+  - id: enter_storage
+    mode: single
+    then:
+      - lambda: |-
+          id(storage_active) = true;
+          id(storage_display_refresh_pending) = true;
+      - script.execute: render_measurement_page
+      - script.wait: render_measurement_page
+      - if:
+          condition:
+            lambda: 'return id(display_settle_ok);'
+          then:
+            - lambda: 'id(storage_display_refresh_pending) = false;'
+      - switch.template.publish:
+          id: storage_control
+          state: ON
+      - text_sensor.template.publish:
+          id: storage_status
+          state: "ON"
+      - if:
+          condition:
+            lambda: 'return !id(preserve_maintenance_status);'
+          then:
+            - text_sensor.template.publish:
+                id: maintenance_status
+                state: "OFF"
+      - if:
+          condition:
+            lambda: |-
+              return !id(storage_display_refresh_pending) &&
+                     id(display_safe_to_sleep);
+          then:
+            - script.execute: enter_deep_sleep
+          else:
+            - script.execute: sleep_after_display
+
+  - id: exit_storage
+    mode: single
+    then:
+      - lambda: 'id(storage_active) = false;'
+      - switch.template.publish:
+          id: storage_control
+          state: OFF
+      - mqtt.publish:
+          topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/storage_mode";'
+          payload: "OFF"
+          qos: 1
+          retain: true
+      - text_sensor.template.publish:
+          id: storage_status
+          state: "OFF"
+      - script.execute: render_measurement_page
+      - script.wait: render_measurement_page
+      - script.execute: sleep_after_display
+
+  # The e-paper keeps its last image without power. Replace the maintenance
+  # page with the latest plant readings before an explicit OFF or watchdog
+  # sleep, so the physical display cannot contradict the retained MQTT state.
+  - id: exit_maintenance
+    mode: single
+    then:
+      - lambda: |-
+          id(maintenance_requested) = false;
+          id(maintenance_active) = false;
+      - switch.template.publish:
+          id: maintenance_control
+          state: OFF
+      - mqtt.publish:
+          topic: !lambda 'return id(mqtt_client).get_topic_prefix() + "/cmd/maintenance";'
+          payload: "OFF"
+          qos: 1
+          retain: true
+      - text_sensor.template.publish:
+          id: maintenance_status
+          state: "OFF"
+      - if:
+          condition:
+            lambda: 'return id(storage_requested);'
+          then:
+            - lambda: 'id(storage_display_refresh_pending) = true;'
+            - script.execute: enter_storage
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(storage_active);'
+                then:
+                  - script.execute: exit_storage
+                else:
+                  # Plant sensors are never sampled during maintenance, so their
+                  # states are still NaN here. Run the full normal cycle so the
+                  # post-maintenance e-paper refresh shows real readings instead
+                  # of "nan%/nanlx/nan°C/nan%". acquire_normal ends with
+                  # decide_sleep, which now takes the plain-sleep branch.
+                  - script.execute: acquire_normal

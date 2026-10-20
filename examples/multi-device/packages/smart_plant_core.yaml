@@ -55,6 +55,10 @@ substitutions:
   low_batt_exit_pct: "22"
   low_batt_warn_pct: "30"
   low_batt_sleep_duration: "24h"
+  ota_min_battery: "50"
+  maintenance_timeout_minutes: "25"
+  maintenance_timeout: "${maintenance_timeout_minutes}min"
+  storage_sleep_duration: "24h"
 
   # The legacy Waveshare driver returns before the active-high BUSY signal has
   # completed every physical refresh. These bounded windows prevent sleep from
@@ -66,6 +70,30 @@ substitutions:
   display_busy_recovery_timeout: "30s"
 
 globals:
+  - id: storage_active
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+  - id: maintenance_end_hour
+    type: int
+    restore_value: false
+    initial_value: '-1'
+  - id: maintenance_end_minute
+    type: int
+    restore_value: false
+    initial_value: '-1'
+  - id: display_settle_ok
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: display_reset_pending
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: display_busy_fault_count
+    type: int
+    restore_value: true
+    initial_value: '0'
   # Persist hysteresis across deep sleep and power loss. A fresh reading at the
   # exit threshold releases a restored latch after charging or battery exchange.
   - id: low_batt_active
@@ -352,6 +380,30 @@ display:
           draw_gauge(id(temp).state,  id(temp).has_state(),  ${temp_min}, ${temp_max},  188, 50, "%.0f°C");
           draw_gauge(id(hum).state,   id(hum).has_state(),   ${hum_min},  ${hum_max},   242, 70, "%.0f%%");
 
+      - id: page_maintenance
+        lambda: |-
+          it.printf(148, 8, id(font_subtitle), TextAlign::TOP_CENTER, "${friendly_name}");
+          it.printf(148, 38, id(font_title), TextAlign::TOP_CENTER, "MAINTENANCE");
+          if (id(maintenance_end_hour) >= 0) {
+            it.printf(148, 82, id(font_title), TextAlign::TOP_CENTER, "ENDS AT %02d:%02d",
+                      id(maintenance_end_hour), id(maintenance_end_minute));
+          } else {
+            it.printf(148, 82, id(font_title), TextAlign::TOP_CENTER,
+                      "ENDS IN ${maintenance_timeout_minutes} MIN");
+          }
+
+      - id: page_storage
+        lambda: |-
+          it.printf(148, 4, id(font_subtitle), TextAlign::TOP_CENTER, "${friendly_name}");
+          it.printf(148, 31, id(font_title), TextAlign::TOP_CENTER, "STORAGE MODE");
+          it.printf(148, 68, id(font_subtitle), TextAlign::TOP_CENTER, "DAILY CHECK");
+          if (id(batpercent).has_state() && std::isfinite(id(batpercent).state)) {
+            it.printf(148, 91, id(font_title), TextAlign::TOP_CENTER,
+                      "BATTERY %.0f%%", id(batpercent).state);
+          } else {
+            it.printf(148, 91, id(font_title), TextAlign::TOP_CENTER, "BATTERY --%%");
+          }
+
       # Critical protection is transport-independent and takes precedence over
       # the normal page until the persisted hysteresis latch releases.
       - id: page_low_batt
@@ -359,6 +411,9 @@ display:
           it.fill(COLOR_ON);
           it.printf(148, 4, id(font_subtitle), COLOR_OFF, TextAlign::TOP_CENTER, "${friendly_name}");
           it.printf(148, 26, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER, "LOW BATT !");
+          if (id(storage_active)) {
+            it.printf(148, 60, id(font_subtitle), COLOR_OFF, TextAlign::TOP_CENTER, "STORAGE MODE");
+          }
           if (id(batpercent).has_state() && std::isfinite(id(batpercent).state)) {
             it.printf(148, 88, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER,
                       "BATTERY %.0f%%", id(batpercent).state);
@@ -407,9 +462,9 @@ script:
           condition:
             lambda: 'return id(esptime).now().is_valid();'
           timeout: 10s
-      - script.execute: render_and_sleep
+      - script.execute: decide_sleep
 
-  - id: render_and_sleep
+  - id: render_measurement_page
     mode: restart
     then:
       - lambda: |-
@@ -427,19 +482,12 @@ script:
             }
           }
       - display.page.show: !lambda |-
-          return id(low_batt_active) ? id(page_low_batt) : id(page1);
+          if (id(low_batt_active)) return id(page_low_batt);
+          return id(storage_active) ? id(page_storage) : id(page1);
       - script.execute: prepare_display_refresh
       - component.update: my_display
       - script.execute: settle_display
       - script.wait: settle_display
-      - if:
-          condition:
-            lambda: 'return id(display_safe_to_sleep);'
-          then:
-            - script.execute: enter_deep_sleep
-          else:
-            - deep_sleep.prevent: deep_sleep_control
-            - script.execute: recover_display_busy
 
   - id: prepare_display_refresh
     then:
@@ -452,6 +500,7 @@ script:
       - script.stop: sleep_after_display
       - script.stop: handle_display_busy_fault
       - script.stop: force_sleep_after_busy_fault
+      - script.stop: on_display_fault
       - lambda: |-
           // Cancellation during the asynchronous reset pulse must release RST.
           if (id(display_reset_pending)) {
@@ -544,9 +593,12 @@ script:
       - script.stop: sleep_after_display
       - lambda: |-
           id(display_safe_to_sleep) = false;
+          id(display_busy_fault_count) += 1;
       - logger.log:
           level: ERROR
-          format: "E-paper BUSY recovery failed or budget exhausted; reset then emergency sleep"
+          format: "E-paper BUSY recovery failed or budget exhausted - fault #%d; reset then emergency sleep"
+          args:
+            - 'id(display_busy_fault_count)'
       - lambda: |-
           pinMode(${display_reset_gpio}, OUTPUT);
           id(display_reset_pending) = true;
@@ -560,8 +612,11 @@ script:
 
   # No new display refresh follows a terminal fault. Native shutdown hooks
   # remain enabled, including the stock driver's final SPI sleep command.
+  # Battery-priority and storage durations are preserved.
   - id: force_sleep_after_busy_fault
     then:
+      - script.execute: on_display_fault
+      - script.wait: on_display_fault
       # Keep this safeguard for users on arbitrary ESPHome versions.
       - safe_mode.mark_successful
       - deep_sleep.allow: deep_sleep_control
@@ -574,19 +629,28 @@ script:
                 id: deep_sleep_control
                 sleep_duration: ${low_batt_sleep_duration}
           else:
-            - deep_sleep.enter: deep_sleep_control
+            - if:
+                condition:
+                  lambda: 'return id(storage_active);'
+                then:
+                  - deep_sleep.enter:
+                      id: deep_sleep_control
+                      sleep_duration: ${storage_sleep_duration}
+                else:
+                  - deep_sleep.enter: deep_sleep_control
 
-  - id: sleep_after_display
+  - id: sample_battery
     mode: restart
     then:
-      - if:
+      - switch.turn_on: exc
+      - delay: 250ms
+      - component.update: max17043_id
+      - wait_until:
           condition:
-            lambda: 'return id(display_safe_to_sleep);'
-          then:
-            - script.execute: enter_deep_sleep
-          else:
-            - deep_sleep.prevent: deep_sleep_control
-            - script.execute: recover_display_busy
+            lambda: |-
+              return id(batpercent).has_state() &&
+                     std::isfinite(id(batpercent).state);
+          timeout: 3s
 
   - id: enter_deep_sleep
     mode: restart
@@ -607,11 +671,26 @@ script:
                 condition:
                   lambda: 'return id(low_batt_active);'
                 then:
+                  # Protective hibernation: extend the cycle so residual drain
+                  # cannot walk the cell toward deep-discharge damage while low.
                   - deep_sleep.enter:
                       id: deep_sleep_control
                       sleep_duration: ${low_batt_sleep_duration}
                 else:
-                  - deep_sleep.enter: deep_sleep_control
+                  - if:
+                      condition:
+                        lambda: 'return id(storage_active);'
+                      then:
+                        - deep_sleep.enter:
+                            id: deep_sleep_control
+                            sleep_duration: ${storage_sleep_duration}
+                      else:
+                        - deep_sleep.enter: deep_sleep_control
           else:
+            - logger.log:
+                level: WARN
+                format: "E-paper became BUSY before sleep; cancelling shutdown"
+            # The live pin overrides the cached result from settle/recovery.
+            # Both profiles must enter recovery instead of retrying the 1s delay.
             - lambda: 'id(display_safe_to_sleep) = false;'
             - script.execute: sleep_after_display
