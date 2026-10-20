@@ -62,6 +62,20 @@ the one I strongly recommend is the one through the `ESPHome Add-on for Home Ass
 
     
 .. Note::
+    Missing or nonfinite sensor values show ``--``. Numeric readings retain
+    their measured value; only gauge needles and battery icons are clamped.
+    Before normal sleep, the firmware observes the e-paper BUSY line. A late
+    BUSY signal starts recovery with one shared 30-second budget, including
+    retries during the final sleep delay. Terminal handling resets the panel
+    and requests sleep within 30.510 seconds of the first recovery start, plus
+    event-loop scheduling latency. It starts no new display refresh.
+
+    This bound ends at ``deep_sleep.enter``, not physical sleep. Native ESPHome
+    shutdown hooks remain active. The stock driver sends its final SPI sleep
+    command and can add a BUSY wait. Both normal and fault paths retain explicit
+    OTA image validation for standalone users on older ESPHome versions.
+
+.. Note::
     The Smart Plant integrates a *battery gauge* sensor (MAX17043/MAX17048).
     ESPHome includes a **native** ``max17043`` component — no ``external_components``
     are needed. The example configuration above already uses it.
