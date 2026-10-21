@@ -35,6 +35,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cstdarg>
 #include <limits>
 #include <string>
 #include <vector>
@@ -55,9 +56,12 @@ struct Display {
   void fill(Color color) { background = color; }
   void image(int, int, int, Color fg, Color bg) { image_fg = fg; image_bg = bg; }
   void line(int, int, int, int, Color color) { foregrounds.push_back(color); }
-  template<typename... Args>
-  void printf(int, int, int, Color color, TextAlign, const char *format, Args... args) {
-    char value[128]; std::snprintf(value, sizeof(value), format, args...);
+  void printf(int, int, int, Color color, TextAlign, const char *format, ...) {
+    char value[128];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(value, sizeof(value), format, args);
+    va_end(args);
     foregrounds.push_back(color); text.emplace_back(value);
   }
   void strftime(int, int, int, Color color, TextAlign, const char *, Time) {
@@ -137,7 +141,7 @@ class LowBatteryTests(unittest.TestCase):
         cpp = Path(directory) / "low_battery.cpp"
         binary = Path(directory) / "low_battery"
         cpp.write_text(self.source(overrides))
-        result = subprocess.run(["g++", "-std=c++17", "-Werror=format", str(cpp), "-o", str(binary)],
+        result = subprocess.run(["g++", "-std=c++17", "-Wformat", "-Werror=format-security", "-Werror=format", str(cpp), "-o", str(binary)],
                                 capture_output=True, text=True)
         return result, binary
 
