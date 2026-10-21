@@ -1,140 +1,175 @@
-💻 Programming
-===============
+Programming
+===========
 
-There are two main programming methods supported and tested with the |Product|: 
-
- * ESPHome
- * Arduino
-
-.. _flashing:
-
-In both scenarios, and if you are using the USB port or the Serial port for programming it, you
-will first need to enter the board into flashing mode: press and hold the *Flash* pushbutton
-while you reset the board (pressing once the *Reset* pushbutton).
-
-.. Caution::
-    When flashing the board, make sure its only powered by the USB/Serial port.
+Start with the ESPHome example for one Smart Plant. It measures the sensors,
+refreshes the display once and sleeps for one hour. You can use the display
+without Home Assistant. Home Assistant is optional for viewing readings over
+the network.
 
 .. _programming-esphome:
 
-ESPHome
----------
-`ESPHome <https://esphome.io>`_ is a well known platform for programming ESP-based devices 
-with a very little effort. It is configured via YAML files and supports a wide range of functionalities
-and sensors.
+1. Prepare ESPHome
+------------------
 
-.. Hint::
-    For using ESPHome, and all its funcionalities, you need to have a `Home Assistant <https://www.home-assistant.io>`_ instance running
-    in the same network as your |Product|.
+Use `ESPHome Device Builder in Home Assistant
+<https://esphome.io/install/>`_ or the
+`ESPHome command-line tools
+<https://esphome.io/guides/cli/>`_. You need a
+USB data cable and access to the computer that will flash the board.
 
-    
-The |Product| comes raw, without any firmware by default, therefore, you will need to flash it for first time. There are many ways to flash 
-your ESPHome device (`locally <https://esphome.io/guides/getting_started_command_line.html>`_, `ESPHome Web <https://web.esphome.io>`_), but 
-the one I strongly recommend is the one through the `ESPHome Add-on for Home Assistant <https://esphome.io/guides/getting_started_hassio.html>`_:
+Download :download:`configuration.yaml <files/configuration.yaml>` into your
+ESPHome configuration directory and give your copy a unique filename, such as
+``my-plant.yaml``. This example already selects the ESP32-S2 board and its pins.
+Keep those hardware settings when adapting it.
 
-.. Error::
-    For the last months, the `ESPHome Web <https://web.esphome.io>`_ web has been having some issues when trying to flash ESP32-S2 modules. Therefore the best way to flash it for first time is with the ESPHome HA (Home Assistant) add-on running on a Raspberry Pi and the Smart Powermeter connected to the RPi.
+2. Configure your plant
+-----------------------
 
+Edit these values in your copy:
 
-1. Make sure your ESPHome Add-on for HA is up to date and working. 
-2. Add a new device, enter the name you want (like *Smart-Plant*), and skip the next step.
-3. Select the *ESP32-S2* as the device type, skip the last step (installation). You will have created a provisional first configuration YAML file.
+* ``device_name``: a unique lowercase device name.
+* ``friendly_name``: the name shown in sensor labels.
+* ``timezone``: your IANA timezone, such as ``Europe/Paris``.
+* ``ap_pwd``: a new password for the fallback Wi-Fi hotspot.
 
-.. figure:: images/getting_started/esphome_1.png
-    :align: center
-    :figwidth: 400px
+Add your network credentials to the existing ``wifi:`` block. Keep its other
+settings. Do not add a second ``wifi:`` block.
 
-4. Open the recently created file and replace the content with the example configuration ``smart-plant.yaml``
+.. code-block:: yaml
 
-.. Note:: You might need to keep the encription keys *OTA* and *API*
+   wifi:
+     ssid: !secret wifi_ssid
+     password: !secret wifi_password
+     # Keep the example's fast_connect, power_save_mode and ap settings here.
 
-.. literalinclude:: files/configuration.yaml
-   :language: yaml
-   :linenos:
+Put the matching values in ``secrets.yaml`` next to your device file:
 
+.. code-block:: yaml
 
-.. Important::
-    This example performs one bounded measurement/display cycle and then enters
-    deep sleep. Battery charge does not keep it awake for OTA. To install an
-    update, power the board through USB-C or start the upload during its short
-    awake window. Deployments that need retained telemetry while devices sleep
-    can use the MQTT package under ``examples/multi-device``.
+   wifi_ssid: "Your network name"
+   wifi_password: "Your network password"
 
-    
+Do not publish your secrets. If adapting an existing device configuration,
+preserve its API encryption key and OTA credentials. Configure OTA
+authentication for your selected ESPHome version; see the `ESPHome OTA component
+<https://esphome.io/components/ota/esphome/>`_.
+
+Use the supplied lemon-tree background for the first test. Then follow
+:doc:`labels` to create your own image. The example fetches its image and Google
+Fonts during compilation, so the build computer needs internet access.
+
 .. Note::
     Invalid sensor readings show ``--``. The device waits for the e-paper
     to finish refreshing. If it does not finish, bounded recovery resets
     the panel before the device requests deep sleep.
 
-.. Note::
-    The Smart Plant integrates a *battery gauge* sensor (MAX17043/MAX17048).
-    ESPHome includes a **native** ``max17043`` component — no ``external_components``
-    are needed. The example configuration above already uses it.
+.. _flashing:
 
-    The gauge is powered permanently from the battery (VBAT), so it keeps
-    tracking the state of charge across deep sleep. No host action is required
-    to save power during sleep: the MAX17048 enters its automatic hibernate mode
-    when cell activity is low and wakes automatically. Do not call the native
-    component's ``sleep_mode`` action for a MAX17048 unless the selected stable
-    ESPHome release explicitly supports that model: older releases do not set
-    the required ``MODE.EnSleep`` bit, and cutting the switched sensor rail also
-    removes the I²C pull-ups needed to communicate with the gauge.
+3. Flash through USB
+--------------------
 
+Read :doc:`safety` and :doc:`assembly` first.
 
-.. Note::
-    ``Lemon_tree_label_page_1.png`` is the background image that will be displayed on the e-paper. For having always a styled background image, I made a `python script <https://github.com/JGAguado/Label-maker>`_ that generates the image of the plant, the title and the parameter 
-    gauges out of a JSON config file. Alternativelly, you can use any photo editor of your choice, but keep in mind the display size 
-    (296x128 pixel) and the center of each gauges (indicated in the YAML code). In this example, it is obtained from an URL, but you can upload yours locally following the `ESPHome image guide <https://esphome.io/components/image/>`_
+.. caution::
 
-    .. image:: images/programming/Lemon_tree_label_page_1.png
-        :width: 150px
+   Power the board only through USB while flashing. Disconnect the battery and
+   solar input before this step. Check battery polarity before reconnecting it.
 
+Connect Smart Plant to the computer that will perform the serial upload.
+Hold **Flash**, press and release **Reset**, then release **Flash** to enter
+flashing mode.
 
+In Device Builder, choose **Install** and the serial installation option that
+matches where the USB cable is connected. A browser-connected board and a board
+connected to the Device Builder host use different upload paths. Follow the
+current ESPHome installation prompts.
 
-5. Click on install, make sure that the the board is connected via the USB-C (and into `flashing`_ mode ) to the device running the Home Assistant (in my case a Raspberry Pi) before selecting the mode of installation.
+With the command-line tools, run this from your configuration directory:
 
-.. figure:: images/getting_started/esphome_2.png
-    :align: center
-    :figwidth: 400px
+.. code-block:: console
 
-6. Select the Serial port and let it run, it might take some minutes. 
-7. Once it's done, you will have to exit the flashing mode: press the *Reset* pushbutton once. 
+   esphome config my-plant.yaml
+   esphome run my-plant.yaml
 
-Now, your ESPHome-based |Product| should be ready to log data and stream it to your Home Assistant. Note that the current configuration is just an example and you can customize it at your will, including the calibration. 
+Select the connected serial port when prompted. After the upload completes,
+press **Reset** once to start the firmware.
 
+If the port is missing or flashing fails, use :doc:`faq`. There is no need to
+assume that every ESP32-S2 is incompatible with browser flashing.
 
-.. Tip::
-    A very easy way to upload and copy files (code or even images) into your ESPHome folder hosted in your HA instance is 
-    with the help of the Visual Studio Code integration for HA. This way you can just drag and drop the files over the folder 
-    on the Home Assistant’s Visual Studio Code navigation panel on your left.
+4. Verify the first cycle
+-------------------------
 
+Keep the USB serial logs open during the first boot. Check that:
 
-Flash Tools
-^^^^^^^^^^^^
-If you want to deploy an ESPHome already compiled *.bin* image, you can use Espressif's official `Flash Download Tools <https://www.espressif.com/en/support/download/other-tools>`_ to upload it into your Smart Powermeter. 
-As an example (and test) you can use this :download:`smart-areca-v2r1-offline.bin <files/smart-areca-v2r1-offline.bin>` image with the address `0x0`, make sure `DoNotChgBin` is checked:
+* The device connects to your Wi-Fi network.
+* Temperature, humidity, light and soil readings appear in the logs.
+* The display refreshes with readings. If a value is missing or implausible,
+  inspect the sensor logs before trusting the display.
+* The device enters deep sleep after the measurement and display cycle.
 
-.. image:: images/programming/Flash_tool.png
-    :width: 3100%
+The e-paper keeps its last image during sleep. An unchanged screen does not
+prove that the device is awake or that its readings are recent.
 
+The standalone example uses the native ESPHome API. If you use Home Assistant,
+add the device through its ESPHome integration. The short awake window can make
+initial discovery or connection difficult; sleeping devices cannot answer API
+requests. Home Assistant may keep the last values when it recognizes
+deep-sleep support. Its availability display depends on your integration setup.
+For an MQTT transport with retained readings, consider the
+`MQTT package example
+<https://github.com/JGAguado/Smart_Plant/tree/V2R1/examples/multi-device>`_.
+Do not add an MQTT-profile device through the ESPHome integration as well.
 
-Arduino
---------
-If you are still interested in programming directly with the Arduino IDE, the procedure is no 
-different than with any other ESP32 devices:
+5. Calibrate the soil reading
+-----------------------------
 
-1. Open the Arduino IDE and go to File -> Preferences option.
-2. Add to the *Additional Boards Manager URSLs* the url:
+The example maps two ADC voltages to 0% and 100% with ``calibrate_linear``.
+These are starting values, not a universal calibration for every plant or soil.
+Observe your probe in representative dry and wet conditions, record the raw
+voltage, then adjust the two mapping points. Keep water away from the electronics.
+The displayed percentage is a relative calibration, not a laboratory soil-water
+measurement.
 
-.. parsed-literal::
+6. Install later updates
+------------------------
 
-    https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+The example sleeps between cycles. USB power alone does **not** disable deep
+sleep or create a permanent OTA window. Use serial flashing for a reliable
+update, or start OTA while the device is awake. Do not change the sleep policy
+without considering battery use.
 
-3. Close the preferences and open in the menu Tools -> Board -> Boards Manager.
-4. Search for *esp32* and install it. This might take some time.
-5. Now you can select the board *ESP32 Dev Module* as the target board. Leave the rest of parameters 
-   by default.
-6. Select the correct port and remember to enter the board into flashing mode before uploading the sketch.
+For the MQTT packages, follow the multi-device guide. Do not assume that the
+standalone example provides remote commands to keep a sleeping device awake.
 
-.. Tip::
-    Remember to check out the full :ref:`pinout`
+Firmware reference
+------------------
+
+The complete :download:`example YAML <files/configuration.yaml>` contains the
+pin mapping, sensor definitions, display layout and sleep scripts.
+
+The battery gauge uses ESPHome's native ``max17043`` component. The MAX17048
+stays powered from the battery and hibernates automatically. Do not add a forced
+sleep action without checking model support in your selected ESPHome version.
+
+The standalone example uses a fixed delay after requesting a display update.
+The shared packages have their own display-completion handling. Inspect the
+configuration you select rather than assuming that all examples have identical
+refresh and sleep behavior.
+
+Other programming options
+-------------------------
+
+For browser installation, see `ESPHome Web <https://web.esphome.io>`_. Use a
+browser that supports Web Serial and a USB data cable.
+
+For Arduino development, start with the official
+`Arduino-ESP32 documentation <https://docs.espressif.com/projects/arduino-esp32/en/latest/>`_
+and select a target that matches the ESP32-S2. Use the :ref:`pinout` for this
+board. An Arduino sketch must implement the sensors, display and sleep behavior;
+it does not inherit them from the ESPHome example.
+
+The repository also contains a historical
+:download:`offline firmware image <files/smart-areca-v2r1-offline.bin>`.
+It does not represent your customized YAML. Build your own configuration when
+you need current behavior, your credentials or your own label.

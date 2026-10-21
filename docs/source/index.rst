@@ -1,67 +1,65 @@
 Smart Plant
-###############
+===========
 
-.. raw:: html
-        
-    <iframe src="_static/carousel.html" style="width: 100%; height: 300px; border: none;"></iframe>
+See how your plant is doing, on its e-paper label and in Home Assistant.
+Smart Plant measures soil moisture, light, temperature and humidity. Its
+2.9-inch display keeps the last image while the device sleeps between readings.
 
+.. image:: images/getting_started/Enclosed.jpg
+   :alt: Five Smart Plant devices with custom labels and coloured enclosures
+   :width: 100%
 
-Welcome to the documentation page of the |Product|, a device to monitor the environmental conditions of your favourite plant.
-
-With the |Product| you can measure a range of paramaters such as the soil moisture, ambient light and the air temperature & relative humidity. 
-In adition to the IoT capabilities of streaming the measured parameters into your favourite platform, like Home Assistant, you can read the data directly on 
-the integrated 2.9" e-paper display.
-
-As you can imagine, all this features would be useless if the design is not optimized to consume the lowest energy possible: thanks to the deep-sleep features of 
-the ESP32 microcontroller, a selection of low-consumption electronics (high-efficient LDOs in standby modes, power-switched sensors and partially refreshed e-paper) 
-and the optional solar cell. 
-
-Everything packed in a quite compact but elegant device that can be directly plugged into your plant's pot.
-
-
-Contents
---------
-
-:doc:`safety`
-    How to operate and manipulate the |Product|.
-
-🛒 `Buy <https://www.elecrow.com/smart-plant.html>`_
-    Get your own |Product| kit today.
-
-:doc:`details`
-    A deeper explanation on the systems of the |Product|.
+Choose your next step
+---------------------
 
 :doc:`getting_started`
-    First steps for configuring and working with the |Product|.
+    Assemble the board, install ESPHome and verify your first readings.
 
-:doc:`design`
-    Design files of the |Product|.
+:doc:`labels`
+    Create a plant label with the companion Label-maker project.
+
+:doc:`programming`
+    Configure one device and choose how to connect it to Home Assistant.
+
+:doc:`faq`
+    Troubleshoot flashing, the display, sleep and connectivity.
+
+`Get a board <https://www.elecrow.com/smart-plant.html>`_
+    Buy a Smart Plant kit.
+
+Explore the design
+------------------
+
+Use :doc:`details` to understand the hardware, :doc:`specs` for its
+specifications and :doc:`design` for board and enclosure files.
+Battery operation and an optional solar input support installations away from
+a USB supply. Battery life depends on your configuration and conditions; see
+:doc:`faq` before planning an unattended installation.
 
 .. _support:
 
-Technical support
------------------
+Questions and support
+---------------------
 
-If you have technical problems or cannot find the information that you need in the provided documentation, 
-please contact me directly:
+Ask questions and share ideas in
+`GitHub Discussions <https://github.com/JGAguado/Smart_Plant/discussions>`_.
+Report reproducible problems in
+`GitHub Issues <https://github.com/JGAguado/Smart_Plant/issues>`_. Include the
+board revision, ESPHome version and relevant logs with credentials removed.
 
 :Author: |Author|
 :Contact: |Email|
-
 :Board: |Product|
 :Revision: |Version|
-:Date: |Date|
-
 
 .. toctree::
    :maxdepth: 3
    :hidden:
 
-   safety   
-   🛒 Buy <https://www.elecrow.com/smart-plant.html>   
-   details
+   safety
    getting_started
-   design   
+   details
+   design
    specs
    glossary
-   faq 
+   faq
