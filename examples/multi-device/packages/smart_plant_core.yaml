@@ -82,14 +82,6 @@ globals:
     type: int
     restore_value: false
     initial_value: '-1'
-  - id: display_settle_ok
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-  - id: display_reset_pending
-    type: bool
-    restore_value: false
-    initial_value: 'false'
   - id: display_busy_fault_count
     type: int
     restore_value: true
