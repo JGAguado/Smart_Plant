@@ -220,12 +220,13 @@ sensor:
 
   - platform: adc
     pin: GPIO1
-    name: "${friendly_name} Soil Moisture"
-    id: soil
-    icon: "mdi:cup-water"
-    device_class: moisture
+    name: "${friendly_name} Soil Voltage"
+    id: soil_voltage
+    device_class: voltage
+    state_class: measurement
+    entity_category: diagnostic
     update_interval: never
-    unit_of_measurement: "%"
+    unit_of_measurement: "V"
     attenuation: 12db
     force_update: true
     filters:
@@ -240,11 +241,32 @@ sensor:
           min_value: 0.5
           max_value: 3.3
           ignore_out_of_range: true
+    accuracy_decimals: 3
+
+  # Derive moisture from the single filtered ADC publication, without a second
+  # sampling loop or an intermediate unfiltered percentage.
+  - platform: copy
+    source_id: soil_voltage
+    name: "${friendly_name} Soil Moisture"
+    id: soil
+    icon: "mdi:cup-water"
+    device_class: moisture
+    unit_of_measurement: "%"
+    force_update: true
+    filters:
       - calibrate_linear:
           - ${soil_v_wet} -> 100.00
           - ${soil_v_dry} -> 0.00
       - lambda: if (x < 1) return 0; else if (x > 100) return 100; return (x);
     accuracy_decimals: 0
+
+# Publish the running firmware version and native effective-configuration hash.
+text_sensor:
+  - platform: version
+    name: "${friendly_name} ESPHome Version"
+    hide_timestamp: true
+    hide_hash: false
+    entity_category: diagnostic
 
 display:
   - platform: waveshare_epaper
@@ -300,9 +322,11 @@ display:
               it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, "--");
               return;
             }
-            if (value < vmin) value = vmin;
-            if (value > vmax) value = vmax;
-            float val = (value - vmin) / abs(vmax - vmin) * alpha;
+            // Keep the measured number; clamp only the needle coordinates.
+            float needle_value = value;
+            if (needle_value < vmin) needle_value = vmin;
+            if (needle_value > vmax) needle_value = vmax;
+            float val = (needle_value - vmin) / abs(vmax - vmin) * alpha;
             int x0 = static_cast<int>(xc + radius + radius * cos(pi / 2 + beta / 2 + val));
             int y0 = static_cast<int>(yc + radius + radius * sin(pi / 2 + beta / 2 + val));
             int x1 = static_cast<int>(xc + radius + (radius+thick) * cos(pi / 2 + beta / 2 + val + 0.1));
@@ -365,7 +389,7 @@ script:
       - repeat:
           count: 5
           then:
-            - component.update: soil
+            - component.update: soil_voltage
             - delay: 3s
       - wait_until:
           condition:

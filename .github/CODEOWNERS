@@ -1,0 +1,11 @@
+# Changes to these paths need the maintainer's approval before merging.
+# Firmware, examples, docs and tests are not listed, so collaborators can
+# merge those PRs themselves once CI passes.
+
+# Hardware design and manufacturing outputs
+/Design/ @JGAguado
+/Enclosure/ @JGAguado
+/Documentation/ @JGAguado
+
+# Repository governance: CI and this file
+/.github/ @JGAguado
