@@ -306,9 +306,11 @@ display:
               it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, "--");
               return;
             }
-            if (value < vmin) value = vmin;
-            if (value > vmax) value = vmax;
-            float val = (value - vmin) / abs(vmax - vmin) * alpha;
+            // Keep the measured number; clamp only the needle coordinates.
+            float needle_value = value;
+            if (needle_value < vmin) needle_value = vmin;
+            if (needle_value > vmax) needle_value = vmax;
+            float val = (needle_value - vmin) / abs(vmax - vmin) * alpha;
             int x0 = static_cast<int>(xc + radius + radius * cos(pi / 2 + beta / 2 + val));
             int y0 = static_cast<int>(yc + radius + radius * sin(pi / 2 + beta / 2 + val));
             int x1 = static_cast<int>(xc + radius + (radius+thick) * cos(pi / 2 + beta / 2 + val + 0.1));
