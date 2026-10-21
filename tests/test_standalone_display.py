@@ -220,6 +220,27 @@ class DisplayFlowScenarios:
                 self.assertEqual(runtime.state.reset_low_count, runtime.state.reset_high_count)
 
 
+class CoreBatterySleepTests(unittest.TestCase):
+    def test_normal_and_fault_sleep_preserve_configurable_protection_duration(self):
+        for profile in ("api", "mqtt"):
+            program = DisplayProgram(ROOT, profile=profile)
+            self.addCleanup(program.close)
+            program.substitutions["low_batt_sleep_duration"] = "12h"
+            for fault in (False, True):
+                for reverse in (False, True):
+                    runtime = DisplayRuntime(program, lambda ms: int(fault), reverse)
+                    runtime.state.busy = int(fault)
+                    runtime.state.display_safe_to_sleep = not fault
+                    runtime.state.low_batt_active = True
+                    runtime.execute("recover_display_busy" if fault else "enter_deep_sleep")
+                    runtime.run_until(32000)
+                    self.assertIsNotNone(runtime.sleep)
+                    self.assertEqual(runtime.sleep[1], 12 * 3600000)
+                    events = [event[1] for event in runtime.events]
+                    self.assertEqual(events.count("safe_mode.mark_successful"), 1)
+                    self.assertLess(events.index("safe_mode.mark_successful"), events.index("deep_sleep.enter"))
+
+
 class RecoveryConsistencyTests(unittest.TestCase):
     def test_shared_recovery_actions_match_standalone(self):
         public = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
