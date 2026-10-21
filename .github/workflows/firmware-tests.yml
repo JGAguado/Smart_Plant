@@ -24,3 +24,6 @@ jobs:
 
       - name: Validate standalone configuration
         run: esphome config docs/source/files/configuration.yaml
+
+      - name: Validate public API and MQTT examples
+        run: python scripts/validate_public_examples.py

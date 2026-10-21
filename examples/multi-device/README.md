@@ -50,3 +50,19 @@ order fails compilation. The long sleep also applies after a panel BUSY fault.
 The normal sleep remains one hour. Both paths keep OTA image confirmation and
 the existing display completion or emergency reset sequence before sleep.
 This feature does not require MQTT or Home Assistant commands.
+
+## Validate the public examples
+
+The examples fetch both packages from `JGAguado/Smart_Plant@V2R1`. Keep the
+core and transport on the same revision. The fork is not required.
+
+With ESPHome 2026.9.0 installed, run from the repository root:
+
+```sh
+python scripts/validate_public_examples.py
+```
+
+This command validates both actual example files with synthetic secrets, a
+local public background and packages from the current checkout. It does not
+compile or contact a device or MQTT broker. ESPHome can download Google Fonts.
+CI runs the same command so a PR is checked against its own package source.
