@@ -13,10 +13,13 @@ measurements and gauge needles over that image.
 Start with an existing background
 ---------------------------------
 
-For your first installation, keep the supplied lemon-tree image. To use another
-ready-made label, browse the
+For a first hardware test, you can keep the supplied lemon-tree image. Its
+preferred-range arcs may differ from your firmware scales. Before using them
+to interpret readings, generate a matching background as described below.
+To browse other ready-made labels, see the
 `plant examples <https://github.com/JGAguado/Label-maker/tree/main/1_Plants/examples>`_
-and download the generated ``*_label_page_1.png`` file.
+and their generated ``*_label_page_1.png`` files. Check their gauge ranges
+before using them with your configuration.
 
 The display background must be **296 by 128 pixels**. Keep the gauge locations
 aligned with the display code. The second generated page is not used by the
@@ -43,17 +46,29 @@ Activate the environment with the command for your operating system, then run:
 
    python -m pip install numpy pycairo
    cd 1_Plants
-   python -c "from Plants_epaper import main; main('examples/Lemon_tree/Lemon_tree.json', simulation=False, page=1)"
 
-This writes ``examples/Lemon_tree/Lemon_tree_label_page_1.png``.
+Download :download:`the firmware-matched JSON <files/lemon-tree-label.json>`
+and save it as ``examples/Lemon_tree/My_plant.json`` in your Label-maker clone.
+This local copy matches the standalone YAML: light uses ``[0, 3775]`` and
+humidity uses ``[20, 80]``. Its preferred light region is ``[600, 3775]``,
+within the firmware range. Preferred regions are illustrative, not care advice
+for your plant. Review them before use.
+
+Generate the background from this local copy:
+
+.. code-block:: console
+
+   python -c "from Plants_epaper import main; main('examples/Lemon_tree/My_plant.json', simulation=False, page=1)"
+
+This writes ``examples/Lemon_tree/My_plant_label_page_1.png``.
 Run the generator from ``1_Plants`` because the example's resource paths are
 relative to that directory. This command generates only the selected label;
 running ``Plants_epaper.py`` directly processes every JSON example.
 
-To personalize it, copy the lemon-tree JSON to a new filename in the same
-example directory. Edit ``title.value`` and ``subtitle.value``. Set
-``image.path`` to your illustration if needed. Then run the command again with
-your JSON filename. The output takes the same filename stem.
+To personalize the local JSON, edit ``title.value`` and ``subtitle.value``.
+Set ``image.path`` to your illustration if needed. Run the command again to
+regenerate the background. If you rename the JSON, update the command too;
+the output takes the same filename stem.
 
 The JSON selects system fonts. Install its requested font, such as Audiowide,
 on the generator computer if you want the same lettering. These system fonts
@@ -62,8 +77,9 @@ are separate from the Google Fonts fetched by ESPHome during compilation.
 Keep the gauges consistent
 --------------------------
 
-The supplied firmware and Label-maker examples do not use identical scales for
-all gauges. Before using a generated background, compare each JSON
+The original Label-maker examples do not use the firmware scales for all
+gauges. The downloadable JSON above corrects those ranges. If you change it,
+compare each JSON
 ``parameters`` entry with the corresponding gauge drawing code in your YAML.
 The standalone firmware currently uses:
 

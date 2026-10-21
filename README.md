@@ -66,8 +66,8 @@ The firmware draws the live readings over that image.
 | Shared packages with the native ESPHome API | [API example](examples/multi-device/my-lemon-tree-api.yaml) | No network response; entity availability depends on Home Assistant setup. |
 
 The [multi-device guide](examples/multi-device/README.md) explains the shared
-hardware core and transport profiles. Each device keeps a small configuration
-for its identity, credentials, calibration and label image.
+hardware core and transport profiles. Each device sets its identity and
+credentials. Calibration and label images use shared defaults unless overridden.
 
 ## Explore the hardware
 

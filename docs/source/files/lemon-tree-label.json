@@ -1,0 +1,157 @@
+{
+  "_source": "Adapted from J. G. Aguado, JGAguado/Label-maker, 1_Plants/examples/Lemon_tree/Lemon_tree.json at 85648df6982435ec3ca0dfb3d29630e85afb0fc0",
+  "_changes": "Match standalone light and humidity scales; bound the illustrative preferred light range.",
+  "general": {
+    "size": [
+      296,
+      128
+    ],
+    "background": [
+      1,
+      1,
+      1
+    ],
+    "radius": 10
+  },
+  "title": {
+    "value": "Lemon tree",
+    "font_type": "Audiowide",
+    "font_size": 20,
+    "position": [
+      5,
+      20
+    ]
+  },
+  "subtitle": {
+    "value": "Citrus limon",
+    "font_type": "Audiowide",
+    "font_size": 15,
+    "position": [
+      5,
+      35
+    ]
+  },
+  "image": {
+    "path": "examples/Lemon_tree/Lemon_tree.png",
+    "size": [
+      90,
+      90
+    ],
+    "position": [
+      10,
+      37
+    ]
+  },
+  "bubble": {
+    "path": "../0_Resources/bubble.png",
+    "size": [
+      185,
+      185
+    ],
+    "position": [
+      60,
+      38
+    ]
+  },
+  "life-cycle": {
+    "display": false,
+    "icon": "../0_Resources/sprout.png",
+    "span": "Jan-Mar"
+  },
+  "synchronized": {
+    "display": false,
+    "icon": "../0_Resources/calendar-sync.png",
+    "position": [
+      20,
+      280,
+      15,
+      15
+    ]
+  },
+  "parameters": {
+    "moisture": {
+      "rel_range": [
+        30,
+        60
+      ],
+      "abs_range": [
+        0,
+        100
+      ],
+      "recomended": "3/week",
+      "unit": "%",
+      "icon": "../0_Resources/cup-water.png",
+      "font_type": "Audiowide",
+      "font_size": 12,
+      "font_xoff": 5,
+      "position": [
+        80,
+        50
+      ],
+      "radius": 22
+    },
+    "light": {
+      "rel_range": [
+        600,
+        3775
+      ],
+      "abs_range": [
+        0,
+        3775
+      ],
+      "recomended": "High",
+      "unit": "lux",
+      "icon": "../0_Resources/white-balance-sunny.png",
+      "font_type": "Audiowide",
+      "font_size": 12,
+      "font_xoff": 0,
+      "position": [
+        134,
+        70
+      ],
+      "radius": 22
+    },
+    "temperature": {
+      "rel_range": [
+        18,
+        29
+      ],
+      "abs_range": [
+        -10,
+        50
+      ],
+      "recomended": "15-25 C",
+      "unit": "C",
+      "icon": "../0_Resources/thermometer.png",
+      "font_type": "Audiowide",
+      "font_size": 12,
+      "font_xoff": 0,
+      "position": [
+        188,
+        50
+      ],
+      "radius": 22
+    },
+    "humidity": {
+      "rel_range": [
+        20,
+        80
+      ],
+      "abs_range": [
+        20,
+        80
+      ],
+      "recomended": "Normal",
+      "unit": "%",
+      "icon": "../0_Resources/water-percent.png",
+      "font_type": "Audiowide",
+      "font_size": 12,
+      "font_xoff": 0,
+      "position": [
+        242,
+        70
+      ],
+      "radius": 22
+    }
+  }
+}
