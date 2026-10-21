@@ -181,6 +181,26 @@ class DisplayFlowScenarios:
             self.assert_valid_sleep(runtime)
             self.assertEqual(runtime.state.reset_low_count, 1)
 
+    def test_new_refresh_starts_a_fresh_recovery_budget(self):
+        for reverse in (False, True):
+            runtime = self.runtime(lambda ms: 1, reverse)
+            runtime.state.display_safe_to_sleep = False
+            runtime.execute("recover_display_busy")
+            runtime.run_until(1000)
+            runtime.busy = lambda ms: int(ms < 2000)
+            runtime.refresh()
+            runtime.run_until(4000)
+            runtime.busy = lambda ms: 1
+            runtime.state.busy = 1
+            runtime.state.display_safe_to_sleep = False
+            runtime.execute("recover_display_busy")
+            runtime.run_until(33000)
+            self.assertIsNone(runtime.sleep)
+            runtime.run_until(35000)
+            self.assert_valid_sleep(runtime)
+            self.assertGreaterEqual(runtime.sleep[0], 34000)
+            self.assertLessEqual(runtime.sleep[0], 34530)
+
     def test_new_refresh_cancels_wait_guard_sleep_reset_and_old_notification(self):
         for cancel, signal in [(100, lambda ms: 1), (250, lambda ms: 0),
                                (2000, lambda ms: int(ms < 1000)),
@@ -198,6 +218,19 @@ class DisplayFlowScenarios:
                 self.assertFalse(runtime.tasks)
                 self.assertTrue(runtime.state.display_safe_to_sleep)
                 self.assertEqual(runtime.state.reset_low_count, runtime.state.reset_high_count)
+
+
+class RecoveryConsistencyTests(unittest.TestCase):
+    def test_shared_recovery_actions_match_standalone(self):
+        public = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
+        core_path = ROOT / "examples/multi-device/packages/smart_plant_core.yaml"
+        core = yaml.load(core_path.read_text(encoding="utf-8"), PackageLoader)
+        public_scripts = {script["id"]: script for script in public["script"]}
+        core_scripts = {script["id"]: script for script in core["script"]}
+        for name in ("prepare_display_refresh", "settle_display", "recover_display_busy",
+                     "display_recovery_budget", "handle_display_busy_fault", "sleep_after_display"):
+            with self.subTest(script=name):
+                self.assertEqual(core_scripts[name], public_scripts[name])
 
 
 class StandaloneFlowTests(DisplayFlowScenarios, unittest.TestCase):
