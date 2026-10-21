@@ -19,32 +19,6 @@ The MQTT example preserves an explicit topic prefix. Treat that prefix as a
 stable identity after Home Assistant discovery, because changing it creates new
 entities.
 
-## Build the checked-out contribution
-
-The example device files fetch remote packages from the production fork's
-`V2R1` branch. They do not select this staging contribution automatically.
-To validate this checkout, replace the `packages` block in your local device
-configuration with local includes. Keep the core and transport from the same
-checkout:
-
-```yaml
-packages:
-  core: !include packages/smart_plant_core.yaml
-  transport: !include packages/smart_plant_profile_api.yaml
-```
-
-For MQTT, use `packages/smart_plant_profile_mqtt.yaml` as the transport instead.
-Keep the device file beside the `packages` directory. Supply its local secrets
-and label image before validation. Keep those settings out of commits.
-
-```sh
-esphome config examples/multi-device/my-lemon-tree-api.yaml
-esphome compile examples/multi-device/my-lemon-tree-api.yaml
-```
-
-Use `my-lemon-tree.yaml` for the MQTT variant. These commands validate and build
-the selected local packages. They do not upload firmware.
-
 Both profiles use the released `waveshare_epaper` driver and wait for the
 panel's physical BUSY cycle before deep sleep. They deliberately keep the
 captive portal and Improv Serial recovery paths from the original example; the
@@ -77,10 +51,3 @@ The normal sleep remains one hour. Both paths keep OTA image confirmation and
 the existing display completion or emergency reset sequence before sleep.
 This feature does not require MQTT or Home Assistant commands.
 
-This upstream staging contribution keeps the baseline's explicit
-`safe_mode.mark_successful` action before both sleep paths. It does not declare
-the production fork's ESPHome `>=2026.8.0` requirement. Production can rely on
-native image confirmation under that requirement. The offline tests check the
-explicit action's ordering; they do not simulate bootloader confirmation.
-Complete local API and MQTT builds verify action availability with ESPHome
-2026.9.0. Older ESPHome versions were not compiled in this review.
