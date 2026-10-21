@@ -9,6 +9,7 @@ can still send SPI; physical sleep timing is outside this executor.
 """
 
 import ctypes
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -29,16 +30,16 @@ PackageLoader.add_multi_constructor(
 class DisplayProgram:
     def __init__(self, root, profile=None, standalone=False, control=False):
         if standalone:
-            core = yaml.load((Path(root) / "docs/source/files/configuration.yaml").read_text(), PackageLoader)
+            core = yaml.load((Path(root) / "docs/source/files/configuration.yaml").read_text(encoding="utf-8"), PackageLoader)
             transport = {"script": []}
         else:
             packages = Path(root) / "examples/multi-device/packages"
-            core = yaml.load((packages / "smart_plant_core.yaml").read_text(), PackageLoader)
+            core = yaml.load((packages / "smart_plant_core.yaml").read_text(encoding="utf-8"), PackageLoader)
             transport = yaml.load(
-                (packages / f"smart_plant_profile_{profile}.yaml").read_text(), PackageLoader
+                (packages / f"smart_plant_profile_{profile}.yaml").read_text(encoding="utf-8"), PackageLoader
             )
         self.substitutions = dict(core["substitutions"], **transport.get("substitutions", {}))
-        available = {s["id"]: s for p in (core, transport) for s in p["script"]}
+        available = {s["id"]: s for p in (core, transport) for s in p.get("script", [])}
         if control:
             for switch in transport.get("switch", []):
                 for direction in ("on", "off"):
@@ -152,10 +153,16 @@ class DisplayProgram:
             self.functions[snippet] = f"run_{index}"
         self.temp = tempfile.TemporaryDirectory(prefix="smart-plant-display-")
         native = Path(self.temp.name)
-        (native / "lambdas.cpp").write_text("\n".join(source))
-        subprocess.run(["c++", "-std=c++20", "-shared", "-fPIC", "-O0",
-                        str(native / "lambdas.cpp"), "-o", str(native / "lambdas.so")], check=True)
-        self.library = ctypes.CDLL(str(native / "lambdas.so"))
+        (native / "lambdas.cpp").write_text("\n".join(source), encoding="utf-8")
+        library_path = native / ("lambdas.dll" if os.name == "nt" else "lambdas.so")
+        try:
+            subprocess.run(["c++", "-std=c++20", "-shared", "-O0",
+                            *([] if os.name == "nt" else ["-fPIC"]),
+                            str(native / "lambdas.cpp"), "-o", str(library_path)], check=True)
+            self.library = ctypes.CDLL(str(library_path))
+        except BaseException:
+            self.temp.cleanup()
+            raise
         for snippet, name in self.functions.items():
             function = getattr(self.library, name)
             function.argtypes = [ctypes.POINTER(State)]
@@ -163,6 +170,14 @@ class DisplayProgram:
             self.functions[snippet] = function
 
     def close(self):
+        if self.library is not None:
+            self.functions.clear()
+            if os.name == "nt":
+                # Windows locks loaded DLLs. Release the native handle before
+                # TemporaryDirectory removes the library file.
+                import _ctypes
+                _ctypes.FreeLibrary(self.library._handle)
+            self.library = None
         self.temp.cleanup()
 
     def expand(self, value):

@@ -1,6 +1,8 @@
-"""Execute the public renderer with UBSan and its real YAML automation."""
+"""Execute the public renderer and real display automation in both entry points."""
 from pathlib import Path
 import subprocess
+import os
+import warnings
 import tempfile
 import unittest
 
@@ -51,21 +53,34 @@ int main(int argc,char **argv) {
 class StandaloneRendererTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        package = yaml.load(PUBLIC.read_text(), PackageLoader)
+        package = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
         page = package["display"][0]["pages"][0]["lambda"]
         cls.temp = tempfile.TemporaryDirectory(prefix="smartplant-public-renderer-")
         cls.addClassCleanup(cls.temp.cleanup)
         path = Path(cls.temp.name)
         source = path / "renderer.cpp"
-        cls.executable = path / "renderer"
-        source.write_text(STUB.replace("// ACTUAL_PAGE", page))
-        subprocess.run(["c++", "-std=c++20", "-fsanitize=undefined,float-cast-overflow",
-                        "-fno-sanitize-recover=all", str(source), "-o", str(cls.executable)], check=True)
+        cls.executable = path / ("renderer.exe" if os.name == "nt" else "renderer")
+        source.write_text(STUB.replace("// ACTUAL_PAGE", page), encoding="utf-8")
+        # Probe a separate valid program. A renderer error must still fail the
+        # real build; it must never trigger a silent unsanitized retry.
+        probe = path / "sanitizer_probe.cpp"
+        probe.write_text("int main() { return 0; }\n", encoding="utf-8")
+        probe_executable = path / ("sanitizer_probe.exe" if os.name == "nt" else "sanitizer_probe")
+        flags = ["-fsanitize=undefined,float-cast-overflow", "-fno-sanitize-recover=all"]
+        result = subprocess.run(["c++", "-std=c++20", *flags, str(probe), "-o", str(probe_executable)],
+                                capture_output=True)
+        if result.returncode == 0:
+            result = subprocess.run([str(probe_executable)], capture_output=True)
+        if result.returncode:
+            warnings.warn("UBSan is unavailable; renderer assertions still run without it", RuntimeWarning)
+            flags = []
+        subprocess.run(["c++", "-std=c++20", "-finput-charset=UTF-8", "-fexec-charset=UTF-8",
+                        *flags, str(source), "-o", str(cls.executable)], check=True)
 
     def render(self, values, present=None):
         present = present or [True] * 5
         args = [item for value, exists in zip(values, present) for item in (str(value), str(int(exists)))]
-        result = subprocess.run([str(self.executable), *args], check=True, text=True, capture_output=True)
+        result = subprocess.run([str(self.executable), *args], check=True, text=True, encoding="utf-8", capture_output=True)
         text, lines = {}, []
         for line in result.stdout.splitlines():
             if line.startswith("text "):
@@ -105,10 +120,12 @@ class StandaloneRendererTests(unittest.TestCase):
             self.assertEqual(text[position], [expected])
 
 
-class StandaloneFlowTests(unittest.TestCase):
+class DisplayFlowScenarios:
+    standalone = True
+    profile = None
     @classmethod
     def setUpClass(cls):
-        cls.program = DisplayProgram(ROOT, standalone=True)
+        cls.program = DisplayProgram(ROOT, profile=cls.profile, standalone=cls.standalone)
         cls.addClassCleanup(cls.program.close)
 
     def runtime(self, busy, reverse=False):
@@ -123,12 +140,18 @@ class StandaloneFlowTests(unittest.TestCase):
         self.assertEqual(keys.count("safe_mode.mark_successful"), 1)
         self.assertLess(keys.index("safe_mode.mark_successful"), keys.index("deep_sleep.enter"))
 
-    def test_boot_after_setup_and_normal_refresh_observes_busy(self):
-        package = yaml.load(PUBLIC.read_text(), PackageLoader)
-        self.assertLess(package["esphome"]["on_boot"]["priority"], 400)
+    def test_normal_refresh_observes_busy(self):
         for reverse in (False, True):
-            runtime = self.runtime(lambda ms: int(10000 <= ms < 12000), reverse)
-            runtime.execute("consider_deep_sleep")
+            if self.standalone:
+                package = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
+                self.assertLess(package["esphome"]["on_boot"]["priority"], 400)
+                runtime = self.runtime(lambda ms: int(10000 <= ms < 12000), reverse)
+                runtime.execute("consider_deep_sleep")
+            else:
+                runtime = self.runtime(lambda ms: int(ms < 2000), reverse)
+                runtime.refresh()
+                runtime.run_until(3000)
+                runtime.execute("sleep_after_display")
             runtime.run_until(15000)
             self.assert_valid_sleep(runtime)
             self.assertTrue(runtime.state.display_busy_seen)
@@ -175,6 +198,20 @@ class StandaloneFlowTests(unittest.TestCase):
                 self.assertFalse(runtime.tasks)
                 self.assertTrue(runtime.state.display_safe_to_sleep)
                 self.assertEqual(runtime.state.reset_low_count, runtime.state.reset_high_count)
+
+
+class StandaloneFlowTests(DisplayFlowScenarios, unittest.TestCase):
+    pass
+
+
+class CoreApiFlowTests(DisplayFlowScenarios, unittest.TestCase):
+    standalone = False
+    profile = "api"
+
+
+class CoreMqttFlowTests(DisplayFlowScenarios, unittest.TestCase):
+    standalone = False
+    profile = "mqtt"
 
 
 if __name__ == "__main__":

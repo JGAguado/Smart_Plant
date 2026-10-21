@@ -401,6 +401,9 @@ script:
           else:
             - script.execute: handle_display_busy_fault
 
+  # With the default 30s budget, reset and sleep request take at most
+  # 30.510s plus event-loop latency. This ends at deep_sleep.enter; native
+  # shutdown hooks can still send the final display SPI sleep command.
   - id: display_recovery_budget
     mode: single
     then:
