@@ -1,0 +1,2 @@
+# Keep the generated symbol library identical to the recovery output on Windows.
+Design/*.kicad_sym text eol=lf
