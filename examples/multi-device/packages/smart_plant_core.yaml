@@ -207,12 +207,13 @@ sensor:
 
   - platform: adc
     pin: GPIO1
-    name: "${friendly_name} Soil Moisture"
-    id: soil
-    icon: "mdi:cup-water"
-    device_class: moisture
+    name: "${friendly_name} Soil Voltage"
+    id: soil_voltage
+    device_class: voltage
+    state_class: measurement
+    entity_category: diagnostic
     update_interval: never
-    unit_of_measurement: "%"
+    unit_of_measurement: "V"
     attenuation: 12db
     force_update: true
     filters:
@@ -227,6 +228,19 @@ sensor:
           min_value: 0.5
           max_value: 3.3
           ignore_out_of_range: true
+    accuracy_decimals: 3
+
+  # Derive moisture from the single filtered ADC publication, without a second
+  # sampling loop or an intermediate unfiltered percentage.
+  - platform: copy
+    source_id: soil_voltage
+    name: "${friendly_name} Soil Moisture"
+    id: soil
+    icon: "mdi:cup-water"
+    device_class: moisture
+    unit_of_measurement: "%"
+    force_update: true
+    filters:
       - calibrate_linear:
           - ${soil_v_wet} -> 100.00
           - ${soil_v_dry} -> 0.00
@@ -343,7 +357,7 @@ script:
       - repeat:
           count: 5
           then:
-            - component.update: soil
+            - component.update: soil_voltage
             - delay: 3s
       - wait_until:
           condition:
