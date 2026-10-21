@@ -1,0 +1,19 @@
+name: Example plant
+subtitle: Synthetic recommendation bands
+metrics:
+  moisture:
+    band:
+    - 20
+    - 60
+  illuminance:
+    band:
+    - 500
+    - 2500
+  temperature:
+    band:
+    - 15
+    - 30
+  humidity:
+    band:
+    - 30
+    - 70
