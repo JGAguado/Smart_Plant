@@ -195,7 +195,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         self.assertEqual(runtime.state.selected_page, runtime.state.page1)
         self.assertIn("aht20_sensor", self.updates(runtime))
         self.assertIn("veml7700_sensor", self.updates(runtime))
-        self.assertEqual(self.updates(runtime).count("soil"), 5)
+        self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
         self.assertEqual(runtime.sleep[1], 3600000)
 
     def test_storage_request_during_maintenance_waits_for_manual_exit(self):
@@ -238,7 +238,7 @@ class MaintenanceStorageTests(unittest.TestCase):
                 self.assertFalse(runtime.state.maintenance_active)
                 self.assertNotIn("ON", [s for _, s in self.publications(runtime, "maintenance_status")])
                 self.assertIn("aht20_sensor", self.updates(runtime))
-                self.assertEqual(self.updates(runtime).count("soil"), 5)
+                self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
                 self.assertEqual(runtime.sleep[1], 3600000)
 
     def test_latest_storage_command_cancels_pending_refresh_and_acquisition(self):
@@ -273,7 +273,7 @@ class MaintenanceStorageTests(unittest.TestCase):
                 runtime.run_until(24000)
                 self.assertEqual(self.updates(runtime).count("my_display"), 1)
                 self.assertEqual(self.updates(runtime).count("max17043_id"), 1 if storage else 2)
-                self.assertEqual(self.updates(runtime).count("soil"), 0 if storage else 5)
+                self.assertEqual(self.updates(runtime).count("soil_voltage"), 0 if storage else 5)
                 self.assertEqual([s for _, s in self.publications(runtime, "maintenance_status")],
                                  ["REJECTED_LOW_BATTERY"])
                 self.assertEqual(runtime.state.storage_active, storage)
@@ -298,7 +298,7 @@ class MaintenanceStorageTests(unittest.TestCase):
                     runtime.run_until(26000)
                     started = [v for _, k, v in runtime.events if k == "script.execute"]
                     self.assertEqual(started.count("acquire_normal"), 1)
-                    self.assertEqual(self.updates(runtime).count("soil"), 5)
+                    self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
                     self.assertEqual([s for _, s in self.publications(runtime, "maintenance_status")],
                                      ["ON", "OFF", "OFF"])
                     self.assertEqual(runtime.sleep[1], 3600000)
@@ -330,7 +330,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         runtime.run_until(34000)
         started = [v for _, k, v in runtime.events if k == "script.execute"]
         self.assertEqual(started.count("acquire_normal"), 1)
-        self.assertEqual(self.updates(runtime).count("soil"), 5)
+        self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
         self.assertEqual(self.updates(runtime).count("my_display"), 1)
         self.assertFalse(runtime.state.storage_active)
         self.assertEqual(runtime.sleep[1], 3600000)
@@ -348,7 +348,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         runtime.execute("maintenance_control_off")
         runtime.run_until(26000)
         self.assertFalse(runtime.state.storage_active)
-        self.assertEqual(self.updates(runtime).count("soil"), 5)
+        self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
         self.assertEqual(runtime.sleep[1], 3600000)
 
     def test_rejected_maintenance_acquires_initially_missing_plant_states(self):
@@ -359,7 +359,7 @@ class MaintenanceStorageTests(unittest.TestCase):
             sensor.available = False
             sensor.state = math.nan
         readings = {"aht20_sensor": {"temp": 21, "hum": 45},
-                    "veml7700_sensor": {"light": 123}, "soil": {"soil": 42}}
+                    "veml7700_sensor": {"light": 123}, "soil_voltage": {"soil": 42}}
         def update(component, state):
             for name, value in readings.get(component, {}).items():
                 sensor = getattr(state, name)
@@ -373,7 +373,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         for name, value in {"temp": 21, "hum": 45, "light": 123, "soil": 42}.items():
             self.assertTrue(getattr(runtime.state, name).available)
             self.assertEqual(getattr(runtime.state, name).state, value)
-        self.assertEqual(self.updates(runtime).count("soil"), 5)
+        self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
         self.assertEqual(runtime.state.selected_page, runtime.state.page1)
         self.assertEqual(runtime.sleep[1], 3600000)
         self.assertEqual([s for _, s in self.publications(runtime, "maintenance_status")],
