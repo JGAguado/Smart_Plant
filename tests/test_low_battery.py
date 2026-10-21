@@ -185,7 +185,7 @@ class LowBatteryTests(unittest.TestCase):
                 for child in value.values():
                     find(child)
 
-        for name in ("enter_deep_sleep", "recover_display_busy"):
+        for name in ("enter_deep_sleep", "force_sleep_after_busy_fault"):
             find(SCRIPTS[name])
         self.assertEqual(len(paths), 2)
         self.assertEqual(SUBSTITUTIONS["low_batt_sleep_duration"], "24h")

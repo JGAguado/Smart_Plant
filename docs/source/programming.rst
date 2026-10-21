@@ -62,6 +62,11 @@ the one I strongly recommend is the one through the `ESPHome Add-on for Home Ass
 
     
 .. Note::
+    Invalid sensor readings show ``--``. The device waits for the e-paper
+    to finish refreshing. If it does not finish, bounded recovery resets
+    the panel before the device requests deep sleep.
+
+.. Note::
     The Smart Plant integrates a *battery gauge* sensor (MAX17043/MAX17048).
     ESPHome includes a **native** ``max17043`` component — no ``external_components``
     are needed. The example configuration above already uses it.

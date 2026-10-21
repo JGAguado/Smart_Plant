@@ -76,6 +76,14 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  - id: display_settle_ok
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: display_reset_pending
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: display_safe_to_sleep
     type: bool
     restore_value: false
@@ -420,6 +428,7 @@ script:
           }
       - display.page.show: !lambda |-
           return id(low_batt_active) ? id(page_low_batt) : id(page1);
+      - script.execute: prepare_display_refresh
       - component.update: my_display
       - script.execute: settle_display
       - script.wait: settle_display
@@ -432,17 +441,30 @@ script:
             - deep_sleep.prevent: deep_sleep_control
             - script.execute: recover_display_busy
 
-  # Observe the panel's physical active-high BUSY cycle. A fixed delay is not
-  # evidence that the e-paper refresh has completed.
+  - id: prepare_display_refresh
+    then:
+      # Run before any new display SPI writes. A new refresh invalidates any
+      # delayed recovery from an older one.
+      - script.stop: settle_display
+      - script.stop: recover_display_busy
+      - script.stop: display_recovery_budget
+      - script.stop: enter_deep_sleep
+      - script.stop: sleep_after_display
+      - script.stop: handle_display_busy_fault
+      - script.stop: force_sleep_after_busy_fault
+      - lambda: |-
+          // Cancellation during the asynchronous reset pulse must release RST.
+          if (id(display_reset_pending)) {
+            digitalWrite(${display_reset_gpio}, HIGH);
+            id(display_reset_pending) = false;
+          }
+          id(display_settle_ok) = false;
+          id(display_busy_seen) = false;
+          id(display_safe_to_sleep) = false;
+
   - id: settle_display
     mode: restart
     then:
-      # A new refresh invalidates recovery and delayed sleep from any older one.
-      - script.stop: recover_display_busy
-      - script.stop: enter_deep_sleep
-      - lambda: |-
-          id(display_busy_seen) = false;
-          id(display_safe_to_sleep) = false;
       - delay: 100ms
       - wait_until:
           condition:
@@ -458,69 +480,117 @@ script:
                   lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
                 timeout: ${display_busy_clear_timeout}
       - lambda: |-
-          id(display_safe_to_sleep) = id(display_busy_seen) &&
-                                      digitalRead(${display_busy_gpio}) == LOW;
+          const bool busy_low = digitalRead(${display_busy_gpio}) == LOW;
+          id(display_safe_to_sleep) = busy_low;
+          id(display_settle_ok) = id(display_busy_seen) && busy_low;
       - if:
           condition:
-            lambda: 'return id(display_safe_to_sleep);'
+            lambda: 'return id(display_settle_ok);'
           then:
             - delay: 500ms
           else:
             - logger.log:
                 level: ERROR
-                format: "E-paper refresh did not complete inside the BUSY window"
+                format: "E-paper refresh not confirmed (asserted=%s, safe_low=%s)"
+                args:
+                  - 'id(display_busy_seen) ? "true" : "false"'
+                  - 'id(display_safe_to_sleep) ? "true" : "false"'
 
-  # If BUSY clears late, resume normal sleep. A permanently asserted signal is
-  # bounded too: reset the panel, then sleep rather than draining the battery.
   - id: recover_display_busy
     mode: restart
     then:
+      # A separate single-mode timer survives LOW/HIGH retries and the final
+      # 1s sleep delay. Only a new refresh or successful sleep cancels it.
+      - if:
+          condition:
+            not:
+              script.is_running: display_recovery_budget
+          then:
+            - script.execute: display_recovery_budget
       - wait_until:
           condition:
             lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
           timeout: ${display_busy_recovery_timeout}
+      - delay: 500ms
       - if:
           condition:
             lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
           then:
-            - delay: 500ms
-            # Re-read after the guard: a newer refresh may have asserted BUSY.
-            - if:
-                condition:
-                  lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
-                then:
-                  - lambda: 'id(display_safe_to_sleep) = true;'
-                  - script.execute: enter_deep_sleep
-                else:
-                  - script.execute: recover_display_busy
-          else:
+            - lambda: 'id(display_safe_to_sleep) = true;'
             - logger.log:
-                level: ERROR
-                format: "E-paper BUSY stuck; resetting panel before emergency sleep"
-            - lambda: |-
-                pinMode(${display_reset_gpio}, OUTPUT);
-                digitalWrite(${display_reset_gpio}, LOW);
-            - delay: 10ms
-            - lambda: 'digitalWrite(${display_reset_gpio}, HIGH);'
-            - delay: 500ms
-            - safe_mode.mark_successful
-            - deep_sleep.allow: deep_sleep_control
-            - switch.turn_off: exc
-            - if:
-                condition:
-                  lambda: 'return id(low_batt_active);'
-                then:
-                  - deep_sleep.enter:
-                      id: deep_sleep_control
-                      sleep_duration: ${low_batt_sleep_duration}
-                else:
-                  - deep_sleep.enter: deep_sleep_control
+                level: WARN
+                format: "E-paper BUSY cleared after recovery window; resuming safe sleep"
+            - script.execute: enter_deep_sleep
+          else:
+            - script.execute: handle_display_busy_fault
+
+  # With the default 30s budget, reset and sleep request take at most
+  # 30.510s plus event-loop latency. This ends at deep_sleep.enter; native
+  # shutdown hooks can still send the final display SPI sleep command.
+  - id: display_recovery_budget
+    mode: single
+    then:
+      - delay: ${display_busy_recovery_timeout}
+      - script.execute: handle_display_busy_fault
+
+  # Shared terminal path for a failed guard or the total budget. Stop pending
+  # normal sleep/recovery before reset. No display/SPI action occurs here.
+  - id: handle_display_busy_fault
+    mode: single
+    then:
+      - script.stop: display_recovery_budget
+      - script.stop: recover_display_busy
+      - script.stop: enter_deep_sleep
+      - script.stop: sleep_after_display
+      - lambda: |-
+          id(display_safe_to_sleep) = false;
+      - logger.log:
+          level: ERROR
+          format: "E-paper BUSY recovery failed or budget exhausted; reset then emergency sleep"
+      - lambda: |-
+          pinMode(${display_reset_gpio}, OUTPUT);
+          id(display_reset_pending) = true;
+          digitalWrite(${display_reset_gpio}, LOW);
+      - delay: 10ms
+      - lambda: |-
+          digitalWrite(${display_reset_gpio}, HIGH);
+          id(display_reset_pending) = false;
+      - delay: 500ms
+      - script.execute: force_sleep_after_busy_fault
+
+  # No new display refresh follows a terminal fault. Native shutdown hooks
+  # remain enabled, including the stock driver's final SPI sleep command.
+  - id: force_sleep_after_busy_fault
+    then:
+      # Keep this safeguard for users on arbitrary ESPHome versions.
+      - safe_mode.mark_successful
+      - deep_sleep.allow: deep_sleep_control
+      - switch.turn_off: exc
+      - if:
+          condition:
+            lambda: 'return id(low_batt_active);'
+          then:
+            - deep_sleep.enter:
+                id: deep_sleep_control
+                sleep_duration: ${low_batt_sleep_duration}
+          else:
+            - deep_sleep.enter: deep_sleep_control
+
+  - id: sleep_after_display
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_safe_to_sleep);'
+          then:
+            - script.execute: enter_deep_sleep
+          else:
+            - deep_sleep.prevent: deep_sleep_control
+            - script.execute: recover_display_busy
 
   - id: enter_deep_sleep
     mode: restart
     then:
-      # Let the selected transport flush its final sensor states before the
-      # Wi-Fi and switched sensor rail disappear.
       - delay: 1s
       - if:
           condition:
@@ -528,7 +598,8 @@ script:
               return id(display_safe_to_sleep) &&
                      digitalRead(${display_busy_gpio}) == LOW;
           then:
-            # Version-agnostic OTA rollback protection for short wake cycles.
+            - script.stop: display_recovery_budget
+            # Preserve version-independent OTA validation on normal sleep too.
             - safe_mode.mark_successful
             - deep_sleep.allow: deep_sleep_control
             - switch.turn_off: exc
@@ -542,5 +613,5 @@ script:
                 else:
                   - deep_sleep.enter: deep_sleep_control
           else:
-            - deep_sleep.prevent: deep_sleep_control
-            - script.execute: recover_display_busy
+            - lambda: 'id(display_safe_to_sleep) = false;'
+            - script.execute: sleep_after_display
