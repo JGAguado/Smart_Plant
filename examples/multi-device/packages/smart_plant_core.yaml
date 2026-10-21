@@ -49,6 +49,13 @@ substitutions:
   hum_min: "20"
   hum_max: "80"
 
+  # Low-battery policy: enter protection at/below critical, release at/above
+  # exit, and invert the normal page below warning. Thresholds are SoC percent.
+  low_batt_crit_pct: "15"
+  low_batt_exit_pct: "22"
+  low_batt_warn_pct: "30"
+  low_batt_sleep_duration: "24h"
+
   # The legacy Waveshare driver returns before the active-high BUSY signal has
   # completed every physical refresh. These bounded windows prevent sleep from
   # cutting power while the panel is still updating.
@@ -59,6 +66,12 @@ substitutions:
   display_busy_recovery_timeout: "30s"
 
 globals:
+  # Persist hysteresis across deep sleep and power loss. A fresh reading at the
+  # exit threshold releases a restored latch after charging or battery exchange.
+  - id: low_batt_active
+    type: bool
+    restore_value: true
+    initial_value: 'false'
   - id: display_busy_seen
     type: bool
     restore_value: false
@@ -269,9 +282,12 @@ display:
     pages:
       - id: page1
         lambda: |-
-          it.image(0, 0, id(page_1_background));
-
           bool battery_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
+          const bool warning = battery_valid && id(batpercent).state < ${low_batt_warn_pct};
+          const auto fg = warning ? COLOR_OFF : COLOR_ON;
+          const auto bg = warning ? COLOR_ON : COLOR_OFF;
+          it.fill(bg);
+          it.image(0, 0, id(page_1_background), fg, bg);
           if (battery_valid) {
             float battery_perc = id(batpercent).state;
             int battery_range = static_cast<int>(battery_perc / 16.0f);
@@ -281,19 +297,19 @@ display:
               "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
               "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
             };
-            it.printf(278, 1, id(font_icon), TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
-            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
+            it.printf(278, 1, id(font_icon), fg, TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
+            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
           } else {
-            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, " --%%");
+            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, " --%%");
           }
 
           auto now = id(esptime).now();
           if (now.is_valid()) {
-            it.strftime(278, 18, id(font_subtitle), TextAlign::TOP_RIGHT, "%H:%M %d/%m", now);
+            it.strftime(278, 18, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%H:%M %d/%m", now);
           } else {
-            it.printf(278, 18, id(font_subtitle), TextAlign::TOP_RIGHT, "--:-- --/--");
+            it.printf(278, 18, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "--:-- --/--");
           }
-          it.printf(278, 18, id(font_icon), TextAlign::TOP_LEFT, "\U0000e627");
+          it.printf(278, 18, id(font_icon), fg, TextAlign::TOP_LEFT, "\U0000e627");
 
           float pi = 3.141592653589793;
           float alpha = 4.71238898038469;
@@ -303,7 +319,7 @@ display:
 
           auto draw_gauge = [&](float value, bool valid, float vmin, float vmax, int xc, int yc, const char* fmt) {
             if (!valid || !std::isfinite(value)) {
-              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, "--");
+              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, "--");
               return;
             }
             // Keep the measured number; clamp only the needle coordinates.
@@ -317,16 +333,30 @@ display:
             int y1 = static_cast<int>(yc + radius + (radius+thick) * sin(pi / 2 + beta / 2 + val + 0.1));
             int x2 = static_cast<int>(xc + radius + (radius+thick) * cos(pi / 2 + beta / 2 + val - 0.1));
             int y2 = static_cast<int>(yc + radius + (radius+thick) * sin(pi / 2 + beta / 2 + val - 0.1));
-            it.line(x0, y0, x1, y1);
-            it.line(x1, y1, x2, y2);
-            it.line(x2, y2, x0, y0);
-            it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, fmt, value);
+            it.line(x0, y0, x1, y1, fg);
+            it.line(x1, y1, x2, y2, fg);
+            it.line(x2, y2, x0, y0, fg);
+            it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, fmt, value);
           };
 
           draw_gauge(id(soil).state,  id(soil).has_state(),  0,           100,          80,  50, "%.0f%%");
           draw_gauge(id(light).state, id(light).has_state(), 0,           ${light_max}, 134, 70, "%.0flx");
           draw_gauge(id(temp).state,  id(temp).has_state(),  ${temp_min}, ${temp_max},  188, 50, "%.0f°C");
           draw_gauge(id(hum).state,   id(hum).has_state(),   ${hum_min},  ${hum_max},   242, 70, "%.0f%%");
+
+      # Critical protection is transport-independent and takes precedence over
+      # the normal page until the persisted hysteresis latch releases.
+      - id: page_low_batt
+        lambda: |-
+          it.fill(COLOR_ON);
+          it.printf(148, 4, id(font_subtitle), COLOR_OFF, TextAlign::TOP_CENTER, "${friendly_name}");
+          it.printf(148, 26, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER, "LOW BATT !");
+          if (id(batpercent).has_state() && std::isfinite(id(batpercent).state)) {
+            it.printf(148, 88, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER,
+                      "BATTERY %.0f%%", id(batpercent).state);
+          } else {
+            it.printf(148, 88, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER, "BATTERY --%%");
+          }
 
 deep_sleep:
   id: deep_sleep_control
@@ -374,7 +404,22 @@ script:
   - id: render_and_sleep
     mode: restart
     then:
-      - display.page.show: page1
+      - lambda: |-
+          static_assert(0 <= ${low_batt_crit_pct} &&
+                        ${low_batt_crit_pct} < ${low_batt_exit_pct} &&
+                        ${low_batt_exit_pct} < ${low_batt_warn_pct} &&
+                        ${low_batt_warn_pct} <= 100,
+                        "Low-battery thresholds must satisfy 0 <= critical < exit < warning <= 100");
+          const bool battery_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
+          if (battery_valid) {
+            if (id(low_batt_active)) {
+              if (id(batpercent).state >= ${low_batt_exit_pct}) id(low_batt_active) = false;
+            } else if (id(batpercent).state <= ${low_batt_crit_pct}) {
+              id(low_batt_active) = true;
+            }
+          }
+      - display.page.show: !lambda |-
+          return id(low_batt_active) ? id(page_low_batt) : id(page1);
       - component.update: my_display
       - script.execute: settle_display
       - script.wait: settle_display
@@ -461,7 +506,15 @@ script:
             - safe_mode.mark_successful
             - deep_sleep.allow: deep_sleep_control
             - switch.turn_off: exc
-            - deep_sleep.enter: deep_sleep_control
+            - if:
+                condition:
+                  lambda: 'return id(low_batt_active);'
+                then:
+                  - deep_sleep.enter:
+                      id: deep_sleep_control
+                      sleep_duration: ${low_batt_sleep_duration}
+                else:
+                  - deep_sleep.enter: deep_sleep_control
 
   - id: enter_deep_sleep
     mode: restart
@@ -479,7 +532,15 @@ script:
             - safe_mode.mark_successful
             - deep_sleep.allow: deep_sleep_control
             - switch.turn_off: exc
-            - deep_sleep.enter: deep_sleep_control
+            - if:
+                condition:
+                  lambda: 'return id(low_batt_active);'
+                then:
+                  - deep_sleep.enter:
+                      id: deep_sleep_control
+                      sleep_duration: ${low_batt_sleep_duration}
+                else:
+                  - deep_sleep.enter: deep_sleep_control
           else:
             - deep_sleep.prevent: deep_sleep_control
             - script.execute: recover_display_busy
