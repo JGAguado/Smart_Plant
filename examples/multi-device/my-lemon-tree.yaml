@@ -37,8 +37,8 @@ substitutions:
   light_max: "8000"
 
 packages:
-  core: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_core.yaml@V2R1
-  transport: github://flowcool/Smart_Plant/examples/multi-device/packages/smart_plant_profile_mqtt.yaml@V2R1
+  core: github://JGAguado/Smart_Plant/examples/multi-device/packages/smart_plant_core.yaml@V2R1
+  transport: github://JGAguado/Smart_Plant/examples/multi-device/packages/smart_plant_profile_mqtt.yaml@V2R1
 
 # Static IP — merges on top of the core Wi-Fi block. Remove this block for DHCP.
 wifi:

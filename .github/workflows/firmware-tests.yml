@@ -1,5 +1,8 @@
 name: Firmware tests
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -10,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -24,3 +29,6 @@ jobs:
 
       - name: Validate standalone configuration
         run: esphome config docs/source/files/configuration.yaml
+
+      - name: Validate public API and MQTT examples
+        run: python scripts/validate_public_examples.py
