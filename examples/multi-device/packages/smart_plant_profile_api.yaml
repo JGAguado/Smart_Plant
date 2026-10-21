@@ -16,6 +16,8 @@ esphome:
         - lambda: 'delay(250);'
     - priority: 399.0
       then:
+        # Storage belongs to MQTT. Clear a latch restored from an older profile.
+        - lambda: 'id(storage_active) = false;'
         - script.execute: acquire_normal
 
 api:
@@ -25,3 +27,42 @@ api:
 ota:
   - platform: esphome
     password: "${ota_password}"
+
+script:
+  - id: on_display_fault
+    then:
+      - logger.log:
+          level: ERROR
+          format: "Display BUSY permanent fault #%d — emergency sleep"
+          args:
+            - 'id(display_busy_fault_count)'
+      - delay: 500ms
+
+  # Simple sleep decision: no maintenance/storage. acquire_normal (core) ends by
+  # calling this; render the measurement page and sleep.
+
+  - id: decide_sleep
+    mode: restart
+    then:
+      - script.execute: render_measurement_page
+      - script.wait: render_measurement_page
+      - script.execute: sleep_after_display
+
+  # API variant of sleep_after_display: same BUSY-safety logic as the MQTT
+  # profile, but the fault status is logged instead of published to an MQTT
+  # diagnostic entity (which does not exist in this profile).
+
+  - id: sleep_after_display
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_safe_to_sleep);'
+          then:
+            - script.execute: enter_deep_sleep
+          else:
+            - deep_sleep.prevent: deep_sleep_control
+            - logger.log:
+                level: ERROR
+                format: "E-paper remains BUSY; starting bounded recovery"
+            - script.execute: recover_display_busy
