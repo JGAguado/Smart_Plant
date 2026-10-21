@@ -50,4 +50,3 @@ order fails compilation. The long sleep also applies after a panel BUSY fault.
 The normal sleep remains one hour. Both paths keep OTA image confirmation and
 the existing display completion or emergency reset sequence before sleep.
 This feature does not require MQTT or Home Assistant commands.
-
