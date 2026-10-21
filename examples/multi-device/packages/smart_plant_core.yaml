@@ -517,7 +517,7 @@ script:
   # remain enabled, including the stock driver's final SPI sleep command.
   - id: force_sleep_after_busy_fault
     then:
-      # Keep this safeguard for standalone users on arbitrary ESPHome versions.
+      # Keep this safeguard for users on arbitrary ESPHome versions.
       - safe_mode.mark_successful
       - deep_sleep.allow: deep_sleep_control
       - switch.turn_off: exc
