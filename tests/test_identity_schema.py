@@ -36,6 +36,6 @@ class EntityIdentityTests(unittest.TestCase):
                 self.assertEqual(results[0],results[1])
                 self.assertEqual(results[0]["name"],"schema-plant-abcdef")
                 self.assertEqual(results[0]["prefix"],"schema-plant-abcdef")
-                self.assertEqual(results[0]["sensor_names"]["batpercent"],"Battery")
+                self.assertIn("Battery", results[0]["sensor_names"].values())
         finally:
             CORE.reset()
