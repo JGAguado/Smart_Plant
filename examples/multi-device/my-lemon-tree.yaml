@@ -24,8 +24,11 @@ substitutions:
   # OTA password for this device
   ota_password: "replace-with-your-ota-password"
 
-  # Plant label image (place PNG in esphome/plant_labels/)
-  label_image: "plant_labels/Lemon_tree_label_page_1.png"
+  # Plant-only image; text, recommendations and scales are fixed YAML below.
+  plant_illustration: "plant_illustrations/Lemon_tree.png"
+
+  screen_title: "Lemon tree"
+  secondary_name: "Citrus limon"
 
   timezone: "Europe/Paris"
 

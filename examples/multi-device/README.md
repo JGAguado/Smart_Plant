@@ -64,7 +64,7 @@ python scripts/validate_public_examples.py
 ```
 
 This command validates both actual example files with synthetic secrets, a
-local public background and packages from the current checkout. It does not
+local public plant illustration and packages from the current checkout. It does not
 compile or contact a device or MQTT broker. ESPHome can download Google Fonts.
 CI runs the same command so a PR is checked against its own package source.
 
@@ -137,8 +137,28 @@ They execute the package actions and compile the policy lambdas as C++ with
 simulated sensors, time and GPIO. Firmware compilation checks ESPHome schemas
 and generated code. Neither check proves physical panel or network behavior.
 
-## Optional label generation
+## Display configuration
 
-Use the [generic label generator](label_maker/README.md) to keep recommendation
-bands and firmware needle scales aligned. Its example uses synthetic values.
-It does not read Home Assistant or any device inventory.
+The normal page is drawn in ESPHome. Only the plant illustration is an image.
+See [the display guide](../../docs/source/labels.rst) for display-only text,
+fixed care recommendations, scales and calibration. Changing `friendly_name`
+still affects upstream entity names; edit `screen_title` or `secondary_name`
+when you only want to change the normal page.
+
+**Migration:** `label_image` and the former full-page bitmap are no longer
+firmware inputs. Replace them with `plant_illustration` (a plant-only PNG), set
+`screen_title` and `secondary_name`, then copy your accepted recommendation
+values and scales into the documented substitutions. A leftover `label_image`
+substitution is unused; it cannot select the old renderer. There is no runtime
+renderer selector. Existing HA names, IDs, topics and sensor calibration are
+not changed by this contribution.
+
+Keep the [generic label generator](label_maker/README.md), its dependencies and
+printable output for historical/print/export use. A generator scale package
+still sets gauge scales, but it does not provide the new recommendation
+substitutions. Configure those explicitly. HA Plant is optional; alignment is
+manual. No HA queries, threshold messages or exports are required.
+
+For source rollback, revert this isolated contribution and restore the previous
+`label_image` input. Device rollback requires a separately planned build and
+upload. Source delivery does not deploy firmware.
