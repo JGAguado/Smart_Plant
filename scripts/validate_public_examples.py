@@ -29,7 +29,7 @@ def validate():
         "mqtt_password": "offline-example-password",
         "lemon_tree_api_encryption_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
     }
-    label = ROOT / "docs/source/images/programming/Lemon_tree_label_page_1.png"
+    label = ROOT / "docs/source/images/programming/Lemon_tree.png"
     with tempfile.TemporaryDirectory(prefix="smart-plant-examples-") as temporary:
         directory = Path(temporary)
         (directory / "secrets.yaml").write_text(yaml.safe_dump(secrets), encoding="utf-8")
@@ -48,7 +48,7 @@ def validate():
             fixture = directory / name
             fixture.write_text(source, encoding="utf-8")
             result = subprocess.run(
-                [sys.executable, "-m", "esphome", "-s", "label_image", str(label),
+                [sys.executable, "-m", "esphome", "-s", "plant_illustration", str(label),
                  "config", str(fixture)], capture_output=True, text=True, timeout=180
             )
             if result.returncode:

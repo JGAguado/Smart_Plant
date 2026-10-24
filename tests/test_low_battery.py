@@ -46,7 +46,7 @@ bool low_batt_active = false;
 bool storage_active = false;
 int page_storage = 3;
 int page1 = 1, page_low_batt = 2;
-int font_title, font_subtitle, font_parameters, font_icon, page_1_background;
+int font_title, font_subtitle, font_parameters, font_icon, font_gauge_icon, plant_art;
 enum Color { COLOR_OFF, COLOR_ON };
 enum class TextAlign { TOP_LEFT, TOP_RIGHT, TOP_CENTER };
 struct Time { bool valid = true; bool is_valid() { return valid; } };
@@ -55,6 +55,7 @@ struct Display {
   Color background = COLOR_OFF, image_fg = COLOR_ON, image_bg = COLOR_OFF;
   std::vector<Color> foregrounds;
   std::vector<std::string> text;
+  void draw_pixel_at(int, int, Color color) { foregrounds.push_back(color); }
   void fill(Color color) { background = color; }
   void image(int, int, int, Color fg, Color bg) { image_fg = fg; image_bg = bg; }
   void line(int, int, int, int, Color color) { foregrounds.push_back(color); }

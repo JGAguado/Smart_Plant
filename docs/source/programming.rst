@@ -29,6 +29,7 @@ Edit these values in your copy:
 
 * ``device_name``: a unique lowercase device name.
 * ``friendly_name``: the name shown in sensor labels.
+* ``screen_title`` and ``secondary_name``: display-only text.
 * ``timezone``: your IANA timezone, such as ``Europe/Paris``.
 * ``ap_pwd``: a new password for the fallback Wi-Fi hotspot.
 
@@ -54,9 +55,10 @@ preserve its API encryption key and OTA credentials. Configure OTA
 authentication for your selected ESPHome version; see the `ESPHome OTA component
 <https://esphome.io/components/ota/esphome/>`_.
 
-Use the supplied lemon-tree background for the first test. Then follow
-:doc:`labels` to create your own image. The example fetches its image and Google
-Fonts during compilation, so the build computer needs internet access.
+Use the supplied plant-only illustration for the first test. Follow
+:doc:`labels` to configure the text, recommendations and scales in YAML.
+Images and Google Fonts are fetched at build time. Local assets permit offline
+builds when the required compiler dependencies are already present.
 
 .. Note::
     Invalid sensor readings show ``--``. The device waits for the e-paper

@@ -25,16 +25,19 @@ using std::abs;
 struct Sensor { float state; bool present; bool has_state() const { return present; } };
 struct Now { bool is_valid() const { return false; } };
 struct Clock { Now now() { return {}; } };
+enum Color { COLOR_OFF, COLOR_ON };
 enum class TextAlign { TOP_CENTER, TOP_LEFT, TOP_RIGHT };
 struct Display {
-  void image(int,int,int) {}
-  void line(int x0,int y0,int x1,int y1) { std::cout << "line " << x0 << ' ' << y0 << ' ' << x1 << ' ' << y1 << '\n'; }
-  void printf(int x,int y,int,TextAlign,const char *fmt,...) {
+  void fill(Color) {}
+  void draw_pixel_at(int,int,Color) {}
+  void image(int,int,int,Color,Color) {}
+  void line(int x0,int y0,int x1,int y1,Color) { std::cout << "line " << x0 << ' ' << y0 << ' ' << x1 << ' ' << y1 << '\n'; }
+  void printf(int x,int y,int,Color,TextAlign,const char *fmt,...) {
     char result[256]; va_list args; va_start(args,fmt);
     vsnprintf(result,sizeof result,fmt,args); va_end(args);
     std::cout << "text " << x << ' ' << y << ' ' << result << '\n';
   }
-  void strftime(int,int,int,TextAlign,const char *,Now) {}
+  void strftime(int,int,int,Color,TextAlign,const char *,Now) {}
 };
 int main(int argc,char **argv) {
   if(argc != 11) return 2;
@@ -44,7 +47,7 @@ int main(int argc,char **argv) {
   Sensor temp{strtof(argv[7],nullptr),atoi(argv[8]) != 0};
   Sensor hum{strtof(argv[9],nullptr),atoi(argv[10]) != 0};
   Clock esptime; Display it;
-  int page_1_background=0,font_title=0,font_subtitle=0,font_parameters=0,font_icon=0;
+  int plant_art=0,font_title=0,font_subtitle=0,font_parameters=0,font_icon=0,font_gauge_icon=0;
   // ACTUAL_PAGE
 }
 """
@@ -55,6 +58,8 @@ class StandaloneRendererTests(unittest.TestCase):
     def setUpClass(cls):
         package = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
         page = package["display"][0]["pages"][0]["lambda"]
+        for key, value in package["substitutions"].items():
+            page = page.replace("${" + key + "}", str(value))
         cls.temp = tempfile.TemporaryDirectory(prefix="smartplant-public-renderer-")
         cls.addClassCleanup(cls.temp.cleanup)
         path = Path(cls.temp.name)
@@ -88,7 +93,7 @@ class StandaloneRendererTests(unittest.TestCase):
                 text.setdefault((int(x), int(y)), []).append(label)
             else:
                 lines.append(tuple(map(int, line.split()[1:])))
-        return text, lines
+        return text, lines[8:]  # Two ring end caps per gauge precede all needles.
 
     def test_missing_nonfinite_and_extreme_battery_never_cast_invalid_values(self):
         for value, present in [("nan", True), ("inf", True), ("-inf", True), (42, False)]:
