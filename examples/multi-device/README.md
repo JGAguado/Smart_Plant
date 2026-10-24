@@ -16,9 +16,47 @@ transport profile. The API profile clears a Storage latch left by the MQTT
 profile and keeps the common low-battery latch. Keep credentials in the local `secrets.yaml`; remote package
 files contain no secrets.
 
-The MQTT example preserves an explicit topic prefix. Treat that prefix as a
-stable identity after Home Assistant discovery, because changing it creates new
-entities.
+## Identity and migration
+
+New installations use function-only entity names and MAC-based MQTT discovery
+identifiers. `display_name` sets the human device label. It defaults to the
+existing `friendly_name` substitution for compatibility. Changing that label
+does not change the configured name or the entity-name hash. The configured
+name defaults to `device_name`, with ESPHome's MAC suffix enabled. The default
+MQTT topic prefix follows this effective node name.
+
+For duplicate plant species, set a unique `configured_name` before building.
+To preserve an existing MAC-bearing name exactly, set that complete name and
+`name_add_mac_suffix: "false"`. Never change a deployed technical identity as
+part of a display-only rename.
+
+**Installed devices require an explicit migration.** These new defaults change
+legacy entity names and MQTT discovery unique IDs. HA can create new entities;
+this PR does not migrate its registry, automations, dashboards or history.
+Keep the previous package revision until you have planned that migration.
+Preserve your existing command topics, and remove old retained discovery only
+as part of your own reviewed migration. Test one device first.
+
+To keep the previous package behavior while upgrading, override the named
+entities in your device YAML (ESPHome merges them by `id`) and preserve the MQTT
+settings explicitly. For example, for the battery entity:
+
+```yaml
+sensor:
+  - id: batpercent
+    name: "${friendly_name} Battery"
+mqtt:
+  topic_prefix: "your-existing-prefix"
+  discovery_unique_id_generator: legacy
+  discovery_object_id_generator: none
+```
+
+Repeat the entity override for every existing named sensor, text sensor and
+switch. The old `mqtt_topic_prefix` substitution alone no longer changes
+`mqtt.topic_prefix`; use the explicit block above. This preserves the original
+strings; it does not rename or repair already migrated HA entities. With MAC
+identifiers, changing an entity's own name still changes its name hash. Keep
+those function names stable too.
 
 Both profiles use the released `waveshare_epaper` driver and wait for the
 panel's physical BUSY cycle before deep sleep. They deliberately keep the
@@ -80,7 +118,7 @@ Publish `ON` or `OFF` with retain enabled and QoS 1:
 | Maintenance | `<prefix>/cmd/maintenance` | `<prefix>/status/maintenance` |
 | Storage | `<prefix>/cmd/storage_mode` | `<prefix>/status/storage_mode` |
 
-`<prefix>` is `mqtt_topic_prefix`. Command state expresses the requested mode.
+`<prefix>` is the effective MQTT topic prefix (the MAC-bearing node name by default). Command state expresses the requested mode.
 Result state expresses the accepted mode. Home Assistant discovers both
 controls and their diagnostic result entities.
 
