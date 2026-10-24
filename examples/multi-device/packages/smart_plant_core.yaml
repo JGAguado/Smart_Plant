@@ -18,12 +18,9 @@ substitutions:
   device_comment: "${friendly_name}"
   project_name: "smart.plant"
   project_version: "2.2"
-  ap_ssid: "Smart-Plant"
-  ap_pwd: "smartplant"
   timezone: "Europe/Paris"
 
-  # OTA password (leave empty string for no password)
-  ota_password: ""
+  # Supply ota_password from the device file; there is no unauthenticated default.
 
   # Wi-Fi credentials — overridden per-device via !secret in the local
   # device file. Must stay plain substitutions here (no !secret): this file
@@ -113,6 +110,21 @@ esphome:
   name: "${device_name}"
   name_add_mac_suffix: true
   comment: "${device_comment}"
+  # Compile-time validation only; this trigger performs no runtime action.
+  on_boot:
+    priority: 800
+    then:
+      - lambda: |-
+          constexpr auto ota_password_is_set = []() {
+            const char *value = "${ota_password}";
+            // Split the literal so ESPHome does not substitute this sentinel.
+            const char *unset = "$" "{ota_password}";
+            if (value[0] == '\0') return false;
+            unsigned i = 0;
+            while (value[i] && value[i] == unset[i]) ++i;
+            return value[i] != unset[i];
+          };
+          static_assert(ota_password_is_set(), "Set an explicit nonempty ota_password in the device substitutions");
   project:
     name: "${project_name}"
     version: "${project_version}"
@@ -126,7 +138,6 @@ esp32:
 logger:
   level: WARN
 
-captive_portal:
 improv_serial:
 
 wifi:
@@ -138,9 +149,6 @@ wifi:
   # (sinon le device n'annonce le mDNS qu'à son boot). Coût = un peu plus de conso.
   power_save_mode: none
   use_address: "${use_address}"
-  ap:
-    ssid: "${ap_ssid}"
-    password: "${ap_pwd}"
 
 i2c:
   scl: GPIO34

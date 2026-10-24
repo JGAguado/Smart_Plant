@@ -21,11 +21,41 @@ stable identity after Home Assistant discovery, because changing it creates new
 entities.
 
 Both profiles use the released `waveshare_epaper` driver and wait for the
-panel's physical BUSY cycle before deep sleep. They deliberately keep the
-captive portal and Improv Serial recovery paths from the original example; the
-captive portal also enables ESPHome's browser-based recovery upload surface.
-Deployments that do not need local fallback provisioning can remove
-`captive_portal`, `improv_serial`, and the Wi-Fi `ap` block together.
+panel's physical BUSY cycle before deep sleep. The shared core keeps Improv Serial provisioning but has no fallback AP or
+captive portal. It requires an explicit `ota_password` in the device file.
+The public examples read it from `!secret lemon_tree_ota_password`.
+This avoids a public fallback password combined with an empty OTA password.
+The standalone newcomer example keeps its existing recovery surfaces.
+
+Set a unique nonempty OTA password before the first build:
+
+```yaml
+# secrets.yaml (local only)
+lemon_tree_ota_password: "replace-with-a-unique-password"
+```
+
+An omitted or empty password fails compilation through a compile-time
+assertion. Schema validation alone does not enforce this: ESPHome can keep
+an unresolved substitution as literal text. The assertion emits no runtime
+action. Use a nonempty value. Keep an existing device's current OTA
+password during the upgrade; changing the new firmware password does not
+authenticate an upload to the old image. Physical USB access remains the
+fallback if Wi-Fi credentials are wrong.
+
+To opt back into an access point and browser provisioning, add them explicitly
+in the device file. Choose a unique local password (at least eight characters):
+
+```yaml
+wifi:
+  ap:
+    ssid: "Smart-Plant-Recovery"
+    password: !secret recovery_ap_password
+captive_portal:
+```
+
+Removing fallback AP/captive portal does not encrypt MQTT or disable the
+native API. Configure those transports separately. Do not expect the core to
+host a recovery AP after this upgrade unless you add the block above.
 
 ## Low-battery protection
 
