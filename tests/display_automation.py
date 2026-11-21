@@ -200,6 +200,7 @@ class DisplayRuntime:
         self.busy = busy
         self.reverse_schedule = reverse_schedule
         self.sensor_update = sensor_update
+        self.api_subscriber = True
         self.tasks = {}
         self.events = []
         self.sleep = None
@@ -223,6 +224,10 @@ class DisplayRuntime:
             return not self.condition(value)
         if key == "mqtt.connected":
             return self.state.mqtt_connected
+        if key == "api.connected":
+            if value != {"state_subscription_only": True}:
+                raise ValueError("Only state subscriber readiness is supported")
+            return self.api_subscriber
         raise ValueError(f"Unsupported condition: {key}")
 
     def stop(self, name):
