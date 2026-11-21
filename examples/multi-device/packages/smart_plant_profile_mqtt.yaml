@@ -12,7 +12,6 @@
 # =============================================================================
 
 substitutions:
-  mqtt_topic_prefix: "${device_name}"
   mqtt_broker: ""
   mqtt_username: ""
   mqtt_password: ""
@@ -79,12 +78,14 @@ esphome:
 # or you get duplicate entities that go unavailable during sleep. Keep them on MQTT.
 mqtt:
   id: mqtt_client
-  topic_prefix: "${mqtt_topic_prefix}"
   broker: "${mqtt_broker}"
   username: "${mqtt_username}"
   password: "${mqtt_password}"
   discovery: true
   discovery_retain: true
+  # Per-device identity. Keep function-only entity names stable across renames.
+  discovery_unique_id_generator: mac
+  discovery_object_id_generator: device_name
   birth_message:    # disabled — prevents HA marking device offline during sleep
   will_message:
   log_topic:        # disabled — saves bandwidth on wake

@@ -46,6 +46,7 @@ intersphinx_mapping = {
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
+intersphinx_timeout = 10
 
 # Printables serves a Cloudflare browser challenge to automated link checkers;
 # the community-model page remains a valid interactive browser link.

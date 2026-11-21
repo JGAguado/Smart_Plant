@@ -25,16 +25,19 @@ using std::abs;
 struct Sensor { float state; bool present; bool has_state() const { return present; } };
 struct Now { bool is_valid() const { return false; } };
 struct Clock { Now now() { return {}; } };
+enum Color { COLOR_OFF, COLOR_ON };
 enum class TextAlign { TOP_CENTER, TOP_LEFT, TOP_RIGHT };
 struct Display {
-  void image(int,int,int) {}
-  void line(int x0,int y0,int x1,int y1) { std::cout << "line " << x0 << ' ' << y0 << ' ' << x1 << ' ' << y1 << '\n'; }
-  void printf(int x,int y,int,TextAlign,const char *fmt,...) {
+  void fill(Color) {}
+  void draw_pixel_at(int,int,Color) {}
+  void image(int,int,int,Color,Color) {}
+  void line(int x0,int y0,int x1,int y1,Color) { std::cout << "line " << x0 << ' ' << y0 << ' ' << x1 << ' ' << y1 << '\n'; }
+  void printf(int x,int y,int,Color,TextAlign,const char *fmt,...) {
     char result[256]; va_list args; va_start(args,fmt);
     vsnprintf(result,sizeof result,fmt,args); va_end(args);
     std::cout << "text " << x << ' ' << y << ' ' << result << '\n';
   }
-  void strftime(int,int,int,TextAlign,const char *,Now) {}
+  void strftime(int,int,int,Color,TextAlign,const char *,Now) {}
 };
 int main(int argc,char **argv) {
   if(argc != 11) return 2;
@@ -44,7 +47,7 @@ int main(int argc,char **argv) {
   Sensor temp{strtof(argv[7],nullptr),atoi(argv[8]) != 0};
   Sensor hum{strtof(argv[9],nullptr),atoi(argv[10]) != 0};
   Clock esptime; Display it;
-  int page_1_background=0,font_title=0,font_subtitle=0,font_parameters=0,font_icon=0;
+  int plant_art=0,font_title=0,font_subtitle=0,font_parameters=0,font_icon=0,font_gauge_icon=0;
   // ACTUAL_PAGE
 }
 """
@@ -55,6 +58,8 @@ class StandaloneRendererTests(unittest.TestCase):
     def setUpClass(cls):
         package = yaml.load(PUBLIC.read_text(encoding="utf-8"), PackageLoader)
         page = package["display"][0]["pages"][0]["lambda"]
+        for key, value in package["substitutions"].items():
+            page = page.replace("${" + key + "}", str(value))
         cls.temp = tempfile.TemporaryDirectory(prefix="smartplant-public-renderer-")
         cls.addClassCleanup(cls.temp.cleanup)
         path = Path(cls.temp.name)
@@ -88,7 +93,7 @@ class StandaloneRendererTests(unittest.TestCase):
                 text.setdefault((int(x), int(y)), []).append(label)
             else:
                 lines.append(tuple(map(int, line.split()[1:])))
-        return text, lines
+        return text, lines[8:]  # Two ring end caps per gauge precede all needles.
 
     def test_missing_nonfinite_and_extreme_battery_never_cast_invalid_values(self):
         for value, present in [("nan", True), ("inf", True), ("-inf", True), (42, False)]:
@@ -167,6 +172,7 @@ class DisplayFlowScenarios:
             for reverse in (False, True):
                 runtime = self.runtime(signal, reverse)
                 runtime.state.display_safe_to_sleep = False
+                runtime.state.my_display.warning = True  # abandoned driver keeps the guard closed
                 runtime.execute("recover_display_busy")
                 runtime.run_until(32000 + self.fault_hook_ms)
                 self.assert_valid_sleep(runtime)
@@ -175,9 +181,19 @@ class DisplayFlowScenarios:
                 self.assertEqual(runtime.state.reset_high_count, 1)
                 self.assertFalse([e for e in runtime.events if e[1] == "component.update"])
 
-    def test_late_high_after_settle_enters_recovery(self):
+    def test_busy_high_after_driver_done_sleeps_normally(self):
+        # Canary 2026-11-21: BUSY stays high after the driver's deep-sleep command.
         for reverse in (False, True):
             runtime = self.runtime(lambda ms: int(ms >= 500), reverse)
+            runtime.execute("enter_deep_sleep")
+            runtime.run_until(5000)
+            self.assert_valid_sleep(runtime)
+            self.assertEqual(runtime.state.reset_low_count, 0)
+
+    def test_abandoned_driver_with_busy_high_enters_recovery(self):
+        for reverse in (False, True):
+            runtime = self.runtime(lambda ms: int(ms >= 500), reverse)
+            runtime.state.my_display.warning = True
             runtime.execute("enter_deep_sleep")
             runtime.run_until(33000)
             self.assert_valid_sleep(runtime)

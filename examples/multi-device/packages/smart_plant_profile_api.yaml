@@ -6,6 +6,9 @@
 # retained. The profile has no broker dependency.
 # =============================================================================
 
+substitutions:
+  api_connection_timeout: "10s"
+
 esphome:
   on_boot:
     # GPIO switches initialize at priority 800 and sensors at 600. Settle the
@@ -18,6 +21,23 @@ esphome:
       then:
         # Storage belongs to MQTT. Clear a latch restored from an older profile.
         - lambda: 'id(storage_active) = false;'
+        - script.execute: sample_battery
+        - script.wait: sample_battery
+        # Protect a critical or persisted low-battery state before spending an
+        # optional network window. A valid recharge at exit releases the bypass.
+        - if:
+            condition:
+              lambda: |-
+                const bool valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
+                if (!valid) return !id(low_batt_active);
+                return id(batpercent).state > ${low_batt_crit_pct} &&
+                       (!id(low_batt_active) || id(batpercent).state >= ${low_batt_exit_pct});
+            then:
+              - wait_until:
+                  condition:
+                    api.connected:
+                      state_subscription_only: true
+                  timeout: ${api_connection_timeout}
         - script.execute: acquire_normal
 
 api:

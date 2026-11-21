@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /docs
+    target-branch: V2R1
+    schedule:
+      interval: weekly
+    groups:
+      documentation:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /examples/multi-device/label_maker
+    target-branch: V2R1
+    schedule:
+      interval: weekly
+    groups:
+      label-tooling:
+        patterns: ["*"]

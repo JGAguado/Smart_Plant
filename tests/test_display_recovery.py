@@ -24,8 +24,20 @@ class LateBusyRecoveryTests(unittest.TestCase):
                 runtime.state.busy = busy(0)
                 yield runtime
 
-    def test_late_permanent_high_reaches_emergency_sleep(self):
+    def test_busy_high_after_driver_done_sleeps_normally(self):
+        # Canary 2026-11-21: the released driver puts the panel into deep sleep and
+        # BUSY then stays high. The driver state, not the pin, decides the sleep.
         for runtime in self.runtimes(lambda ms: int(ms >= 500)):
+            runtime.execute("enter_deep_sleep")
+            runtime.run_until(5000)
+            self.assertEqual(runtime.sleep[1], 3600000)
+            self.assertLess(runtime.sleep[0], 2000)
+            self.assertEqual(runtime.state.display_busy_fault_count, 0)
+            self.assertEqual(runtime.state.reset_low_count, 0)
+
+    def test_abandoned_driver_with_busy_high_reaches_emergency_sleep(self):
+        for runtime in self.runtimes(lambda ms: int(ms >= 500)):
+            runtime.state.my_display.warning = True  # driver abandoned its update
             runtime.execute("enter_deep_sleep")
             runtime.run_until(34000)
             self.assertIsNotNone(runtime.sleep)
@@ -45,6 +57,7 @@ class LateBusyRecoveryTests(unittest.TestCase):
 
     def test_recovery_to_sleep_race_returns_to_recovery(self):
         for runtime in self.runtimes(lambda ms: int(500 <= ms < 2000 or ms >= 3000)):
+            runtime.state.my_display.warning = True  # driver abandoned its update
             runtime.execute("enter_deep_sleep")
             runtime.run_until(37000)
             starts = [t for t, key, name in runtime.events

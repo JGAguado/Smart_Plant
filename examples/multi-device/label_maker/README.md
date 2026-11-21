@@ -48,7 +48,7 @@ They need `g++` plus the listed Python packages. PNG bytes can change with
 rendering-library versions. New hardware or fleet validation remains a
 separate operation. Revert this isolated optional-tool contribution to undo it.
 
-With ESPHome 2026.9.0 installed, also run:
+With ESPHome 2026.11.0 installed, also run:
 
 ```sh
 python3 -m unittest discover -s tests -p test_label_packages.py -v
@@ -56,3 +56,14 @@ python3 -m unittest discover -s tests -p test_label_packages.py -v
 
 These tests check the real package loader with custom scales, reversed package
 order and conflicting device substitutions.
+
+## ESPHome drawing and the plant-only illustration
+
+Current firmware draws its page in ESPHome. This generator remains for
+historical backgrounds and printable/exported labels. Its output is not a
+`plant_illustration` input. Use a plant-only PNG and fixed YAML display values.
+The public `docs/source/images/programming/Lemon_tree.png` is an unmodified
+copy from JGAguado/Label-maker commit
+`85648df6982435ec3ca0dfb3d29630e85afb0fc0`, path
+`1_Plants/examples/Lemon_tree/Lemon_tree.png`. The existing
+`LICENSE.Label-maker.txt` applies.

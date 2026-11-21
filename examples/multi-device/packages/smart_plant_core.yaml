@@ -14,16 +14,21 @@
 # Default values — override any of these in your device file.
 substitutions:
   device_name: "smart-plant"
+  # Preserve the technical identity when changing display text.
+  configured_name: "${device_name}"
+  name_add_mac_suffix: "true"
+  # Compatibility input: existing friendly_name overrides still supply the label.
   friendly_name: "Smart Plant"
+  display_name: "${friendly_name}"
+  # Display-only text. These fields never rename the node or its entities.
+  screen_title: "${display_name}"
+  secondary_name: "Citrus limon"
   device_comment: "${friendly_name}"
   project_name: "smart.plant"
   project_version: "2.2"
-  ap_ssid: "Smart-Plant"
-  ap_pwd: "smartplant"
   timezone: "Europe/Paris"
 
-  # OTA password (leave empty string for no password)
-  ota_password: ""
+  # Supply ota_password from the device file; there is no unauthenticated default.
 
   # Wi-Fi credentials — overridden per-device via !secret in the local
   # device file. Must stay plain substitutions here (no !secret): this file
@@ -35,8 +40,12 @@ substitutions:
   # Default: device hostname via mDNS. Set to static IP for reliability.
   use_address: "${device_name}"
 
-  # Background image for the e-paper display — local path or URL
-  label_image: "https://smart-plant.readthedocs.io/en/v2r1/_images/Lemon_tree_label_page_1.png"
+  # Static plant illustration only. Text and gauges are drawn by ESPHome.
+  plant_illustration: "https://raw.githubusercontent.com/JGAguado/Label-maker/85648df6982435ec3ca0dfb3d29630e85afb0fc0/1_Plants/examples/Lemon_tree/Lemon_tree.png"
+  illustration_x: "10"
+  illustration_y: "37"
+  illustration_width: "90"
+  illustration_height: "90"
 
   # Soil moisture calibration (ADC voltage → %)
   soil_v_wet: "1.25"   # voltage when sensor is fully submerged
@@ -48,6 +57,18 @@ substitutions:
   temp_max: "50"
   hum_min: "20"
   hum_max: "80"
+
+  # Care recommendations, independent from scales and physical calibration.
+  # Illustrative Lemon defaults match docs/source/files/lemon-tree-label.json.
+  # Align HA Plant manually. A change requires rebuilding the firmware.
+  soil_recommended_min: "30"
+  soil_recommended_max: "60"
+  light_recommended_min: "600"
+  light_recommended_max: "3775"
+  temp_recommended_min: "18"
+  temp_recommended_max: "29"
+  hum_recommended_min: "20"
+  hum_recommended_max: "80"
 
   # Low-battery policy: enter protection at/below critical, release at/above
   # exit, and invert the normal page below warning. Thresholds are SoC percent.
@@ -65,7 +86,6 @@ substitutions:
   # cutting power while the panel is still updating.
   display_busy_gpio: "14"
   display_reset_gpio: "15"
-  display_busy_assert_timeout: "2s"
   display_busy_clear_timeout: "30s"
   display_busy_recovery_timeout: "30s"
 
@@ -110,9 +130,27 @@ globals:
     initial_value: 'true'
 
 esphome:
-  name: "${device_name}"
-  name_add_mac_suffix: true
+  # The dedicated max17048 platform first shipped in stable 2026.11.0.
+  min_version: "2026.11.0"
+  name: "${configured_name}"
+  name_add_mac_suffix: "${name_add_mac_suffix}"
+  friendly_name: "${display_name}"
   comment: "${device_comment}"
+  # Compile-time validation only; this trigger performs no runtime action.
+  on_boot:
+    priority: 800
+    then:
+      - lambda: |-
+          constexpr auto ota_password_is_set = []() {
+            const char *value = "${ota_password}";
+            // Split the literal so ESPHome does not substitute this sentinel.
+            const char *unset = "$" "{ota_password}";
+            if (value[0] == '\0') return false;
+            unsigned i = 0;
+            while (value[i] && value[i] == unset[i]) ++i;
+            return value[i] != unset[i];
+          };
+          static_assert(ota_password_is_set(), "Set an explicit nonempty ota_password in the device substitutions");
   project:
     name: "${project_name}"
     version: "${project_version}"
@@ -126,7 +164,6 @@ esp32:
 logger:
   level: WARN
 
-captive_portal:
 improv_serial:
 
 wifi:
@@ -138,9 +175,6 @@ wifi:
   # (sinon le device n'annonce le mDNS qu'à son boot). Coût = un peu plus de conso.
   power_save_mode: none
   use_address: "${use_address}"
-  ap:
-    ssid: "${ap_ssid}"
-    password: "${ap_pwd}"
 
 i2c:
   scl: GPIO34
@@ -154,18 +188,25 @@ spi:
 
 image:
   - platform: file
-    file: "${label_image}"
-    id: page_1_background
+    file: "${plant_illustration}"
+    id: plant_art
+    resize: ["${illustration_width}", "${illustration_height}"]
     type: BINARY
     invert_alpha: true
 
 font:
+  # display_name/secondary_name are rendered as dynamic text (normal page here,
+  # plus maintenance/storage/low-battery). French names carry accents and the
+  # oe ligature (e.g. "coeurs"); GF_Latin_Core pulls the needed Latin glyphs so
+  # gfonts does not ship only the default ASCII subset.
   - file: "gfonts://Audiowide"
     id: font_title
     size: 20
+    glyphsets: [GF_Latin_Core]
   - file: "gfonts://Audiowide"
     id: font_subtitle
     size: 15
+    glyphsets: [GF_Latin_Core]
   - file: "gfonts://Audiowide"
     id: font_parameters
     size: 15
@@ -181,6 +222,12 @@ font:
       - "\U0000ebd4"
       - "\U0000e1a4"
       - "\U0000e627"
+
+  - file: 'gfonts://Material+Symbols+Outlined'
+    id: font_gauge_icon
+    size: 22
+    # Water, sunlight, temperature and relative humidity; no icon PNGs.
+    glyphs: ["\U0000e798", "\U0000e81a", "\U0000e1ff", "\U0000f87e"]
 
 time:
   - platform: sntp
@@ -200,18 +247,18 @@ switch:
     internal: true
 
 sensor:
-  - platform: max17043
+  - platform: max17048
     id: max17043_id
     update_interval: never
     battery_voltage:
       id: batvolt
-      name: "${friendly_name} Battery voltage"
+      name: "Battery voltage"
       internal: true
     battery_level:
       id: batpercent
       device_class: "battery"
       unit_of_measurement: "%"
-      name: "${friendly_name} Battery"
+      name: "Battery"
       force_update: true
 
   - platform: aht10
@@ -219,13 +266,13 @@ sensor:
     variant: AHT20
     i2c_id: bus_a
     temperature:
-      name: "${friendly_name} Temperature"
+      name: "Temperature"
       id: temp
       icon: "mdi:thermometer"
       device_class: temperature
       force_update: true
     humidity:
-      name: "${friendly_name} Air Humidity"
+      name: "Air Humidity"
       id: hum
       icon: "mdi:water-percent"
       device_class: humidity
@@ -237,18 +284,18 @@ sensor:
     address: 0x10
     update_interval: never
     ambient_light:
-      name: "${friendly_name} Ambient light"
+      name: "Ambient light"
       id: light
       icon: "mdi:white-balance-sunny"
       device_class: illuminance
       force_update: true
     actual_gain:
-      name: "${friendly_name} Actual gain"
+      name: "Actual gain"
       internal: true
 
   - platform: adc
     pin: GPIO1
-    name: "${friendly_name} Soil Voltage"
+    name: "Soil Voltage"
     id: soil_voltage
     device_class: voltage
     state_class: measurement
@@ -275,7 +322,7 @@ sensor:
   # sampling loop or an intermediate unfiltered percentage.
   - platform: copy
     source_id: soil_voltage
-    name: "${friendly_name} Soil Moisture"
+    name: "Soil Moisture"
     id: soil
     icon: "mdi:cup-water"
     device_class: moisture
@@ -291,19 +338,19 @@ sensor:
 # Publish the running firmware version and native effective-configuration hash.
 text_sensor:
   - platform: version
-    name: "${friendly_name} ESPHome Version"
+    name: "ESPHome Version"
     hide_timestamp: true
     hide_hash: false
     entity_category: diagnostic
 
 display:
-  - platform: waveshare_epaper
+  - platform: epaper_spi
     cs_pin: GPIO10
     dc_pin: GPIO13
     busy_pin: GPIO${display_busy_gpio}
     reset_pin: GPIO${display_reset_gpio}
     rotation: 270
-    model: 2.90inv2
+    model: waveshare-2.9in-v2
     id: my_display
     update_interval: never
     full_update_every: 1
@@ -312,15 +359,22 @@ display:
         lambda: |-
           bool battery_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
           const bool warning = battery_valid && id(batpercent).state < ${low_batt_warn_pct};
-          const auto fg = warning ? COLOR_OFF : COLOR_ON;
-          const auto bg = warning ? COLOR_ON : COLOR_OFF;
+          // epaper_spi waveshare-2.9in-v2 draws COLOR_ON light and COLOR_OFF dark;
+          // the legacy 2.90inv2 model was the inverted variant (canary 2026-11-21).
+          const auto fg = warning ? COLOR_ON : COLOR_OFF;
+          const auto bg = warning ? COLOR_OFF : COLOR_ON;
           it.fill(bg);
-          it.image(0, 0, id(page_1_background), fg, bg);
+          it.image(${illustration_x}, ${illustration_y}, id(plant_art), fg, bg);
+
+          // Screen-only title. The image contains only the plant illustration.
+          // Top-left, above the illustration and clear of the gauges; a rename
+          // touches only these substitutions, no image regeneration.
+          it.printf(2, 0,  id(font_title),    fg, TextAlign::TOP_LEFT, "%s", "${screen_title}");
+          it.printf(2, 22, id(font_subtitle), fg, TextAlign::TOP_LEFT, "%s", "${secondary_name}");
           if (battery_valid) {
             float battery_perc = id(batpercent).state;
-            int battery_range = static_cast<int>(battery_perc / 16.0f);
-            battery_range = (battery_range > 6) ? 6 : battery_range;
-            battery_range = (battery_range < 0)  ? 0 : battery_range;
+            const float icon_percent = std::fmin(100.0f, std::fmax(0.0f, battery_perc));
+            const int battery_range = static_cast<int>(icon_percent / 16.0f);
             const char* battery_icon_map[] = {
               "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
               "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
@@ -338,6 +392,53 @@ display:
             it.printf(278, 18, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "--:-- --/--");
           }
           it.printf(278, 18, id(font_icon), fg, TextAlign::TOP_LEFT, "\U0000e627");
+
+          // Preserve the legacy midpoint-filled annulus, not a min-to-max band.
+          // Keep local lambdas so the standalone YAML needs no C++ include file.
+          auto draw_ring = [&](float vmin, float vmax, float recommended_min,
+                               float recommended_max, int xc, int yc, const char *icon) {
+            const float ring_pi = 3.141592653589793f;
+            const float sweep = 4.71238898038469f;
+            const float start = ring_pi / 2 + (2 * ring_pi - sweep) / 2;
+            const float midpoint = recommended_min / 2 + recommended_max / 2;
+            const float endpoint = start + (midpoint - vmin) / (vmax - vmin) * sweep;
+            for (int y = -23; y <= 22; ++y) {
+              for (int x = -23; x <= 22; ++x) {
+                const float dx = x + 0.5f, dy = y + 0.5f;
+                const float squared = dx * dx + dy * dy;
+                if (squared < 16.5f * 16.5f || squared > 22.5f * 22.5f) continue;
+                float angle = std::atan2(dy, dx);
+                if (angle < start) angle += 2 * ring_pi;
+                const bool in_sweep = angle <= start + sweep;
+                const bool fill = squared >= 17 * 17 && squared <= 22 * 22 && angle <= endpoint;
+                const bool outline = squared <= 17.5f * 17.5f || squared >= 21.5f * 21.5f;
+                if (in_sweep && (fill || outline)) it.draw_pixel_at(xc + 22 + x, yc + 22 + y, fg);
+              }
+            }
+            for (float a : {start, start + sweep}) {
+              it.line(static_cast<int>(std::round(xc + 22 + 17 * std::cos(a))),
+                      static_cast<int>(std::round(yc + 22 + 17 * std::sin(a))),
+                      static_cast<int>(std::round(xc + 22 + 22 * std::cos(a))),
+                      static_cast<int>(std::round(yc + 22 + 22 * std::sin(a))), fg);
+            }
+            it.printf(xc + 22, yc + 11, id(font_gauge_icon), fg, TextAlign::TOP_CENTER, "%s", icon);
+          };
+          static_assert(0 < 100 && 0 <= ${soil_recommended_min} &&
+                        ${soil_recommended_min} <= ${soil_recommended_max} &&
+                        ${soil_recommended_max} <= 100, "Invalid soil display range");
+          draw_ring(0, 100, ${soil_recommended_min}, ${soil_recommended_max}, 80, 50, "\U0000e798");
+          static_assert(0 < ${light_max} && 0 <= ${light_recommended_min} &&
+                        ${light_recommended_min} <= ${light_recommended_max} &&
+                        ${light_recommended_max} <= ${light_max}, "Invalid light display range");
+          draw_ring(0, ${light_max}, ${light_recommended_min}, ${light_recommended_max}, 134, 70, "\U0000e81a");
+          static_assert(${temp_min} < ${temp_max} && ${temp_min} <= ${temp_recommended_min} &&
+                        ${temp_recommended_min} <= ${temp_recommended_max} &&
+                        ${temp_recommended_max} <= ${temp_max}, "Invalid temp display range");
+          draw_ring(${temp_min}, ${temp_max}, ${temp_recommended_min}, ${temp_recommended_max}, 188, 50, "\U0000e1ff");
+          static_assert(${hum_min} < ${hum_max} && ${hum_min} <= ${hum_recommended_min} &&
+                        ${hum_recommended_min} <= ${hum_recommended_max} &&
+                        ${hum_recommended_max} <= ${hum_max}, "Invalid hum display range");
+          draw_ring(${hum_min}, ${hum_max}, ${hum_recommended_min}, ${hum_recommended_max}, 242, 70, "\U0000f87e");
 
           float pi = 3.141592653589793;
           float alpha = 4.71238898038469;
@@ -374,7 +475,7 @@ display:
 
       - id: page_maintenance
         lambda: |-
-          it.printf(148, 8, id(font_subtitle), TextAlign::TOP_CENTER, "${friendly_name}");
+          it.printf(148, 8, id(font_subtitle), TextAlign::TOP_CENTER, "${display_name}");
           it.printf(148, 38, id(font_title), TextAlign::TOP_CENTER, "MAINTENANCE");
           if (id(maintenance_end_hour) >= 0) {
             it.printf(148, 82, id(font_title), TextAlign::TOP_CENTER, "ENDS AT %02d:%02d",
@@ -386,7 +487,7 @@ display:
 
       - id: page_storage
         lambda: |-
-          it.printf(148, 4, id(font_subtitle), TextAlign::TOP_CENTER, "${friendly_name}");
+          it.printf(148, 4, id(font_subtitle), TextAlign::TOP_CENTER, "${display_name}");
           it.printf(148, 31, id(font_title), TextAlign::TOP_CENTER, "STORAGE MODE");
           it.printf(148, 68, id(font_subtitle), TextAlign::TOP_CENTER, "DAILY CHECK");
           if (id(batpercent).has_state() && std::isfinite(id(batpercent).state)) {
@@ -400,17 +501,17 @@ display:
       # the normal page until the persisted hysteresis latch releases.
       - id: page_low_batt
         lambda: |-
-          it.fill(COLOR_ON);
-          it.printf(148, 4, id(font_subtitle), COLOR_OFF, TextAlign::TOP_CENTER, "${friendly_name}");
-          it.printf(148, 26, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER, "LOW BATT !");
+          it.fill(COLOR_OFF);
+          it.printf(148, 4, id(font_subtitle), COLOR_ON, TextAlign::TOP_CENTER, "${display_name}");
+          it.printf(148, 26, id(font_title), COLOR_ON, TextAlign::TOP_CENTER, "LOW BATT !");
           if (id(storage_active)) {
-            it.printf(148, 60, id(font_subtitle), COLOR_OFF, TextAlign::TOP_CENTER, "STORAGE MODE");
+            it.printf(148, 60, id(font_subtitle), COLOR_ON, TextAlign::TOP_CENTER, "STORAGE MODE");
           }
           if (id(batpercent).has_state() && std::isfinite(id(batpercent).state)) {
-            it.printf(148, 88, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER,
+            it.printf(148, 88, id(font_title), COLOR_ON, TextAlign::TOP_CENTER,
                       "BATTERY %.0f%%", id(batpercent).state);
           } else {
-            it.printf(148, 88, id(font_title), COLOR_OFF, TextAlign::TOP_CENTER, "BATTERY --%%");
+            it.printf(148, 88, id(font_title), COLOR_ON, TextAlign::TOP_CENTER, "BATTERY --%%");
           }
 
 deep_sleep:
@@ -445,7 +546,7 @@ script:
           count: 5
           then:
             - component.update: soil_voltage
-            - delay: 3s
+            - delay: 200ms
       - wait_until:
           condition:
             lambda: 'return id(soil).has_state() && std::isfinite(id(soil).state);'
@@ -485,6 +586,7 @@ script:
     then:
       # Run before any new display SPI writes. A new refresh invalidates any
       # delayed recovery from an older one.
+      - script.stop: observe_display_busy
       - script.stop: settle_display
       - script.stop: recover_display_busy
       - script.stop: display_recovery_budget
@@ -502,33 +604,57 @@ script:
           id(display_settle_ok) = false;
           id(display_busy_seen) = false;
           id(display_safe_to_sleep) = false;
+      - script.execute: observe_display_busy
+
+  # epaper_spi cannot tell a refresh whose BUSY line never rose from a real one.
+  # Keep the fork guard: a refresh is confirmed only if BUSY was seen asserted.
+  - id: observe_display_busy
+    mode: restart
+    then:
+      - wait_until:
+          condition:
+            lambda: 'return digitalRead(${display_busy_gpio}) == HIGH;'
+          timeout: ${display_busy_clear_timeout}
+      - lambda: 'if (digitalRead(${display_busy_gpio}) == HIGH) id(display_busy_seen) = true;'
 
   - id: settle_display
     mode: restart
     then:
-      - delay: 100ms
+      # epaper_spi runs the whole update asynchronously and is_updating() stays
+      # true until the panel has refreshed, powered off and entered deep sleep.
+      # Its own 120 s BUSY abandon is not configurable, so this wait is bounded
+      # by display_busy_clear_timeout and falls through to the BUSY recovery path.
       - wait_until:
           condition:
-            lambda: 'return digitalRead(${display_busy_gpio}) == HIGH;'
-          timeout: ${display_busy_assert_timeout}
-      - if:
-          condition:
-            lambda: 'return digitalRead(${display_busy_gpio}) == HIGH;'
-          then:
-            - lambda: 'id(display_busy_seen) = true;'
-            - wait_until:
-                condition:
-                  lambda: 'return digitalRead(${display_busy_gpio}) == LOW;'
-                timeout: ${display_busy_clear_timeout}
+            not:
+              epaper_spi.is_updating: my_display
+          timeout: ${display_busy_clear_timeout}
       - lambda: |-
-          const bool busy_low = digitalRead(${display_busy_gpio}) == LOW;
-          id(display_safe_to_sleep) = busy_low;
-          id(display_settle_ok) = id(display_busy_seen) && busy_low;
+          // The released driver waits for BUSY low before power_off and then sends
+          // the deep-sleep command (0x10), after which BUSY stays high (canary
+          // 2026-11-21: driver done in 3 s, BUSY still high 33 s later). Completion
+          // is therefore the driver state, not the pin level; the level is logged.
+          const bool driver_done = !id(my_display).is_updating() &&
+                                   !id(my_display).status_has_warning();
+          // Confirmed only if BUSY was observed asserted (observe_display_busy)
+          // and the driver finished: an abandoned update leaves a status warning.
+          id(display_busy_seen) = id(display_busy_seen) && driver_done;
+          id(display_safe_to_sleep) = driver_done;
+          id(display_settle_ok) = id(display_busy_seen) && driver_done;
+      - logger.log:
+          level: WARN
+          format: "E-paper settle: driver_done=%d busy_high=%d confirmed=%d"
+          args:
+            - '(int) id(display_safe_to_sleep)'
+            - '(int) (digitalRead(${display_busy_gpio}) == HIGH)'
+            - '(int) id(display_settle_ok)'
       - if:
           condition:
             lambda: 'return id(display_settle_ok);'
           then:
-            - delay: 500ms
+            - logger.log:
+                level: DEBUG
+                format: "E-paper update completed and display asleep"
           else:
             - logger.log:
                 level: ERROR
@@ -651,8 +777,11 @@ script:
       - if:
           condition:
             lambda: |-
+              // Driver state, not the BUSY level: BUSY stays high once the
+              // driver has put the panel into deep sleep.
               return id(display_safe_to_sleep) &&
-                     digitalRead(${display_busy_gpio}) == LOW;
+                     !id(my_display).is_updating() &&
+                     !id(my_display).status_has_warning();
           then:
             - script.stop: display_recovery_budget
             # Preserve version-independent OTA validation on normal sleep too.

@@ -105,7 +105,7 @@ class DisplayProgram:
 
         fields = [(g["id"], g["type"], g["initial_value"])
                   for p in (core, transport) for g in p.get("globals", [])]
-        fields += [("busy", "int", "0"), ("reset_low_count", "int", "0"),
+        fields += [("my_display", "Display", None), ("busy", "int", "0"), ("reset_low_count", "int", "0"),
                    ("reset_high_count", "int", "0"), ("now", "uint32_t", "0")]
         if standalone:
             fields.append(("esptime", "Clock", "0"))
@@ -121,17 +121,22 @@ class DisplayProgram:
             _fields_ = [("state", ctypes.c_float), ("available", ctypes.c_bool)]
         class Clock(ctypes.Structure):
             _fields_ = [("hour", ctypes.c_int), ("minute", ctypes.c_int), ("valid", ctypes.c_bool)]
-        types.update(Sensor=Sensor, Clock=Clock)
+        class Display(ctypes.Structure):
+            _fields_ = [("updating", ctypes.c_bool), ("warning", ctypes.c_bool)]
+        types.update(Sensor=Sensor, Clock=Clock, Display=Display)
 
         class State(ctypes.Structure):
             _fields_ = [(name, types[kind]) for name, kind, _ in fields]
 
         self.State = State
-        self.initial = {name: (Sensor(80, True) if kind == "Sensor" else Clock(12, 0, True)) if value is None
+        self.initial = {name: (Display(False, False) if kind == "Display" else Sensor(80, True) if kind == "Sensor"
+                               else Clock(12, 0, True)) if value is None
                         else Clock(0, 0, False) if kind == "Clock" else value == "true" if kind == "bool" else int(value)
                         for name, kind, value in fields}
         source = ["#include <cstdint>\n#include <type_traits>\n#include <cmath>\n",
                   "struct Sensor { float state; bool available; bool has_state() const { return available; } };",
+                  "struct Display { bool updating; bool warning; bool is_updating() const { return updating; } "
+                  "bool status_has_warning() const { return warning; } };",
                   "struct Clock { int hour; int minute; bool valid; bool is_valid() const { return valid; } Clock now() const { return *this; } };",
                   "struct State {" + "".join(f"{kind} {name};" for name, kind, _ in fields) + "};",
                   "constexpr int HIGH=1, LOW=0, OUTPUT=1;",
@@ -200,6 +205,8 @@ class DisplayRuntime:
         self.busy = busy
         self.reverse_schedule = reverse_schedule
         self.sensor_update = sensor_update
+        self.api_subscriber = True
+        self.update_started = None
         self.tasks = {}
         self.events = []
         self.sleep = None
@@ -221,8 +228,14 @@ class DisplayRuntime:
             return value in self.tasks
         if key == "not":
             return not self.condition(value)
+        if key == "epaper_spi.is_updating":
+            return bool(self.state.my_display.updating)
         if key == "mqtt.connected":
             return self.state.mqtt_connected
+        if key == "api.connected":
+            if value != {"state_subscription_only": True}:
+                raise ValueError("Only state subscriber readiness is supported")
+            return self.api_subscriber
         raise ValueError(f"Unsupported condition: {key}")
 
     def stop(self, name):
@@ -276,6 +289,10 @@ class DisplayRuntime:
                 if value == "my_display" and self.state.reset_low_count != self.state.reset_high_count:
                     raise AssertionError("Display SPI update occurred while RST was LOW")
                 self.events.append((self.state.now, key, value))
+                if value == "my_display" and not self.state.my_display.updating:
+                    # epaper_spi update() is asynchronous: is_updating() is true at once.
+                    self.state.my_display.updating = True
+                    self.update_started = self.state.now
                 if self.sensor_update is not None:
                     self.sensor_update(value, self.state)
             elif key == "display.page.show":
@@ -303,10 +320,30 @@ class DisplayRuntime:
                 self.tasks.pop(task["name"], None)
                 task["alive"] = False
 
+    # Released epaper_spi 2026.11.0: the update ends after the refresh wait
+    # (REFRESH_MIN_MS) once BUSY is low, or is abandoned after the fixed 120 s BUSY
+    # timeout (power off, status warning, no deep-sleep command).
+    REFRESH_MIN_MS = 3000
+    BUSY_TIMEOUT_MS = 120000
+
+    def advance_display(self):
+        if self.update_started is None:
+            return
+        elapsed = self.state.now - self.update_started
+        if elapsed >= self.REFRESH_MIN_MS and not self.state.busy:
+            self.state.my_display.updating = False
+            self.state.my_display.warning = False
+            self.update_started = None
+        elif elapsed >= self.BUSY_TIMEOUT_MS:
+            self.state.my_display.updating = False
+            self.state.my_display.warning = True
+            self.update_started = None
+
     def run_until(self, ms):
         while self.state.now < ms and not self.sleep:
             self.state.now += self.TICK
             self.state.busy = self.busy(self.state.now)
+            self.advance_display()
             for task in list(self.tasks.values())[:: -1 if self.reverse_schedule else 1]:
                 if not task["alive"]:
                     continue

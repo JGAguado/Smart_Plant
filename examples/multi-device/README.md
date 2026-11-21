@@ -16,16 +16,93 @@ transport profile. The API profile clears a Storage latch left by the MQTT
 profile and keeps the common low-battery latch. Keep credentials in the local `secrets.yaml`; remote package
 files contain no secrets.
 
+Before naming or renaming a device, read
+[Device names, entity names and label text](NAMING.md). It distinguishes the
+current package behavior from proposed improvements and explains the MQTT
+discovery risks.
+
 The MQTT example preserves an explicit topic prefix. Treat that prefix as a
 stable identity after Home Assistant discovery, because changing it creates new
 entities.
 
-Both profiles use the released `waveshare_epaper` driver and wait for the
-panel's physical BUSY cycle before deep sleep. They deliberately keep the
-captive portal and Improv Serial recovery paths from the original example; the
-captive portal also enables ESPHome's browser-based recovery upload surface.
-Deployments that do not need local fallback provisioning can remove
-`captive_portal`, `improv_serial`, and the Wi-Fi `ap` block together.
+## Identity and migration
+
+New installations use function-only entity names and MAC-based MQTT discovery
+identifiers. `display_name` sets the human device label. It defaults to the
+existing `friendly_name` substitution for compatibility. Changing that label
+does not change the configured name or the entity-name hash. The configured
+name defaults to `device_name`, with ESPHome's MAC suffix enabled. The default
+MQTT topic prefix follows this effective node name.
+
+For duplicate plant species, set a unique `configured_name` before building.
+To preserve an existing MAC-bearing name exactly, set that complete name and
+`name_add_mac_suffix: "false"`. Never change a deployed technical identity as
+part of a display-only rename.
+
+**Installed devices require an explicit migration.** These new defaults change
+legacy entity names and MQTT discovery unique IDs. HA can create new entities;
+this PR does not migrate its registry, automations, dashboards or history.
+Keep the previous package revision until you have planned that migration.
+Preserve your existing command topics, and remove old retained discovery only
+as part of your own reviewed migration. Test one device first.
+
+To keep the previous package behavior while upgrading, override the named
+entities in your device YAML (ESPHome merges them by `id`) and preserve the MQTT
+settings explicitly. For example, for the battery entity:
+
+```yaml
+sensor:
+  - id: batpercent
+    name: "${friendly_name} Battery"
+mqtt:
+  topic_prefix: "your-existing-prefix"
+  discovery_unique_id_generator: legacy
+  discovery_object_id_generator: none
+```
+
+Repeat the entity override for every existing named sensor, text sensor and
+switch. The old `mqtt_topic_prefix` substitution alone no longer changes
+`mqtt.topic_prefix`; use the explicit block above. This preserves the original
+strings; it does not rename or repair already migrated HA entities. With MAC
+identifiers, changing an entity's own name still changes its name hash. Keep
+those function names stable too.
+
+Both profiles use the released `epaper_spi` driver (model `waveshare-2.9in-v2`) and wait for
+`epaper_spi.is_updating` to clear, with the BUSY pin as a bounded safety check, before deep sleep. The shared core keeps Improv Serial provisioning but has no fallback AP or
+captive portal. It requires an explicit `ota_password` in the device file.
+The public examples read it from `!secret lemon_tree_ota_password`.
+This avoids a public fallback password combined with an empty OTA password.
+The standalone newcomer example keeps its existing recovery surfaces.
+
+Set a unique nonempty OTA password before the first build:
+
+```yaml
+# secrets.yaml (local only)
+lemon_tree_ota_password: "replace-with-a-unique-password"
+```
+
+An omitted or empty password fails compilation through a compile-time
+assertion. Schema validation alone does not enforce this: ESPHome can keep
+an unresolved substitution as literal text. The assertion emits no runtime
+action. Use a nonempty value. Keep an existing device's current OTA
+password during the upgrade; changing the new firmware password does not
+authenticate an upload to the old image. Physical USB access remains the
+fallback if Wi-Fi credentials are wrong.
+
+To opt back into an access point and browser provisioning, add them explicitly
+in the device file. Choose a unique local password (at least eight characters):
+
+```yaml
+wifi:
+  ap:
+    ssid: "Smart-Plant-Recovery"
+    password: !secret recovery_ap_password
+captive_portal:
+```
+
+Removing fallback AP/captive portal does not encrypt MQTT or disable the
+native API. Configure those transports separately. Do not expect the core to
+host a recovery AP after this upgrade unless you add the block above.
 
 ## Low-battery protection
 
@@ -57,14 +134,14 @@ This feature does not require MQTT or Home Assistant commands.
 The examples fetch both packages from `JGAguado/Smart_Plant@V2R1`. Keep the
 core and transport on the same revision. The fork is not required.
 
-With ESPHome 2026.9.0 installed, run from the repository root:
+With ESPHome 2026.11.0 installed, run from the repository root:
 
 ```sh
 python scripts/validate_public_examples.py
 ```
 
 This command validates both actual example files with synthetic secrets, a
-local public background and packages from the current checkout. It does not
+local public plant illustration and packages from the current checkout. It does not
 compile or contact a device or MQTT broker. ESPHome can download Google Fonts.
 CI runs the same command so a PR is checked against its own package source.
 
@@ -80,7 +157,7 @@ Publish `ON` or `OFF` with retain enabled and QoS 1:
 | Maintenance | `<prefix>/cmd/maintenance` | `<prefix>/status/maintenance` |
 | Storage | `<prefix>/cmd/storage_mode` | `<prefix>/status/storage_mode` |
 
-`<prefix>` is `mqtt_topic_prefix`. Command state expresses the requested mode.
+`<prefix>` is the effective MQTT topic prefix (the MAC-bearing node name by default). Command state expresses the requested mode.
 Result state expresses the accepted mode. Home Assistant discovers both
 controls and their diagnostic result entities.
 
@@ -137,8 +214,28 @@ They execute the package actions and compile the policy lambdas as C++ with
 simulated sensors, time and GPIO. Firmware compilation checks ESPHome schemas
 and generated code. Neither check proves physical panel or network behavior.
 
-## Optional label generation
+## Display configuration
 
-Use the [generic label generator](label_maker/README.md) to keep recommendation
-bands and firmware needle scales aligned. Its example uses synthetic values.
-It does not read Home Assistant or any device inventory.
+The normal page is drawn in ESPHome. Only the plant illustration is an image.
+See [the display guide](../../docs/source/labels.rst) for display-only text,
+fixed care recommendations, scales and calibration. Changing `friendly_name`
+still affects upstream entity names; edit `screen_title` or `secondary_name`
+when you only want to change the normal page.
+
+**Migration:** `label_image` and the former full-page bitmap are no longer
+firmware inputs. Replace them with `plant_illustration` (a plant-only PNG), set
+`screen_title` and `secondary_name`, then copy your accepted recommendation
+values and scales into the documented substitutions. A leftover `label_image`
+substitution is unused; it cannot select the old renderer. There is no runtime
+renderer selector. Existing HA names, IDs, topics and sensor calibration are
+not changed by this contribution.
+
+Keep the [generic label generator](label_maker/README.md), its dependencies and
+printable output for historical/print/export use. A generator scale package
+still sets gauge scales, but it does not provide the new recommendation
+substitutions. Configure those explicitly. HA Plant is optional; alignment is
+manual. No HA queries, threshold messages or exports are required.
+
+For source rollback, revert this isolated contribution and restore the previous
+`label_image` input. Device rollback requires a separately planned build and
+upload. Source delivery does not deploy firmware.

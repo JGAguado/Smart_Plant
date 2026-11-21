@@ -17,15 +17,17 @@ substitutions:
   mqtt_password: !secret mqtt_password
   api_encryption_key: !secret lemon_tree_api_encryption_key
 
-  # MQTT topic prefix — set once and never change (renaming orphans HA entities).
-  # Format: <device_name>-<last 3 bytes of MAC>, visible in ESPHome logs on first boot.
-  mqtt_topic_prefix: "lemon-tree-abcdef"
+  # The default MQTT prefix is the effective node name, including its MAC suffix.
+  # Keep the node identity stable after discovery; see README migration guidance.
 
   # OTA password for this device
-  ota_password: "replace-with-your-ota-password"
+  ota_password: !secret lemon_tree_ota_password
 
-  # Plant label image (place PNG in esphome/plant_labels/)
-  label_image: "plant_labels/Lemon_tree_label_page_1.png"
+  # Plant-only image; text, recommendations and scales are fixed YAML below.
+  plant_illustration: "plant_illustrations/Lemon_tree.png"
+
+  screen_title: "Lemon tree"
+  secondary_name: "Citrus limon"
 
   timezone: "Europe/Paris"
 

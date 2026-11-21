@@ -31,6 +31,7 @@ class RecoveryBudgetTests(unittest.TestCase):
         # Every LOW lasts long enough to pass the 500ms guard, but HIGH returns
         # before the final 1s sleep delay finishes. Each individual wait succeeds.
         for runtime in self.runtimes(lambda ms: int(ms % 2000 >= 600)):
+            runtime.state.my_display.warning = True  # abandoned driver keeps the guard closed
             runtime.execute("recover_display_busy")
             runtime.run_until(33000)
             self.assertIsNotNone(runtime.sleep)
