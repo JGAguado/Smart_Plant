@@ -1,6 +1,34 @@
 substitutions:
   device_name: "smart-plant"
   friendly_name: "Smart Plant"
+  # Display-only fields. Same title contract as NAMING.md; no auto-shortening.
+  screen_title: "Lemon tree"
+  secondary_name: "Citrus limon"
+  # Static plant illustration only. Text and gauges are drawn by ESPHome.
+  plant_illustration: "https://raw.githubusercontent.com/JGAguado/Label-maker/85648df6982435ec3ca0dfb3d29630e85afb0fc0/1_Plants/examples/Lemon_tree/Lemon_tree.png"
+  illustration_x: "10"
+  illustration_y: "37"
+  illustration_width: "90"
+  illustration_height: "90"
+  # Display ranges and illustrative recommendations. Not soil calibration.
+  light_max: "3775"
+  temp_min: "-10"
+  temp_max: "50"
+  hum_min: "20"
+  hum_max: "80"
+  # Care recommendations, independent from scales and physical calibration.
+  # Illustrative Lemon defaults match docs/source/files/lemon-tree-label.json.
+  # Align HA Plant manually. A change requires rebuilding the firmware.
+  soil_recommended_min: "30"
+  soil_recommended_max: "60"
+  light_recommended_min: "600"
+  light_recommended_max: "3775"
+  temp_recommended_min: "18"
+  temp_recommended_max: "29"
+  hum_recommended_min: "20"
+  hum_recommended_max: "80"
+  # Invert the normal page below this battery percentage. No sleep policy change.
+  low_batt_warn_pct: "30"
   project_name: "smart.plant"
   project_version: "2.2"
   ap_pwd: "smartplant"
@@ -79,18 +107,21 @@ spi:
     
 image:
   - platform: file
-    file: "https://smart-plant.readthedocs.io/en/v2r1/_images/Lemon_tree_label_page_1.png"
-    id: page_1_background
-    type: binary
+    file: "${plant_illustration}"
+    id: plant_art
+    resize: ["${illustration_width}", "${illustration_height}"]
+    type: BINARY
     invert_alpha: true
 
 font:
   - file: "gfonts://Audiowide"
     id: font_title
     size: 20
+    glyphsets: [GF_Latin_Core]
   - file: "gfonts://Audiowide"
     id: font_subtitle
     size: 15
+    glyphsets: [GF_Latin_Core]
   - file: "gfonts://Audiowide"
     id: font_parameters
     size: 15
@@ -106,6 +137,12 @@ font:
       - "\U0000ebd4" # battery 5 bar
       - "\U0000e1a4" # battery full
       - "\U0000e627" # sync
+
+  - file: 'gfonts://Material+Symbols+Outlined'
+    id: font_gauge_icon
+    size: 22
+    # Water, sunlight, temperature and relative humidity; no icon PNGs.
+    glyphs: ["\U0000e798", "\U0000e81a", "\U0000e1ff", "\U0000f87e"]
 
 time:
   - platform: sntp
@@ -208,45 +245,86 @@ display:
     pages: 
       - id: page1
         lambda: |-
-          #define H_LEFT_MARGIN 4
-          #define H_RIGHT_MARGIN 280
-          #define H_CENTER 128 
-          #define V_WEATHER 0
-          #define V_CLOCK 1
-          #define V_WIFI 30
-          #define V_VOLTAGE 60
-          #define V_BATTERY  90
-          
-          it.image(0, 0, id(page_1_background));
-          
-          // Validate before any float-to-int conversion or icon lookup.
-          const bool battery_valid = id(batpercent).has_state() &&
-                                     std::isfinite(id(batpercent).state);
+          bool battery_valid = id(batpercent).has_state() && std::isfinite(id(batpercent).state);
+          const bool warning = battery_valid && id(batpercent).state < ${low_batt_warn_pct};
+          const auto fg = warning ? COLOR_OFF : COLOR_ON;
+          const auto bg = warning ? COLOR_ON : COLOR_OFF;
+          it.fill(bg);
+          it.image(${illustration_x}, ${illustration_y}, id(plant_art), fg, bg);
+
+          // Screen-only title. The image contains only the plant illustration.
+          // Top-left, above the illustration and clear of the gauges; a rename
+          // touches only these substitutions, no image regeneration.
+          it.printf(2, 0,  id(font_title),    fg, TextAlign::TOP_LEFT, "%s", "${screen_title}");
+          it.printf(2, 22, id(font_subtitle), fg, TextAlign::TOP_LEFT, "%s", "${secondary_name}");
           if (battery_valid) {
-            const float battery_perc = id(batpercent).state;
-            // Even finite readings can exceed int range. Clamp only the icon.
+            float battery_perc = id(batpercent).state;
             const float icon_percent = std::fmin(100.0f, std::fmax(0.0f, battery_perc));
             const int battery_range = static_cast<int>(icon_percent / 16.0f);
             const char* battery_icon_map[] = {
               "\U0000ebdc", "\U0000ebd9", "\U0000ebe0", "\U0000ebdd",
               "\U0000ebe2", "\U0000ebd4", "\U0000e1a4"
             };
-            it.printf(278, 1, id(font_icon), TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
-            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
+            it.printf(278, 1, id(font_icon), fg, TextAlign::TOP_LEFT, battery_icon_map[battery_range]);
+            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%3.0f%%", battery_perc);
           } else {
-            it.printf(278, 1, id(font_subtitle), TextAlign::TOP_RIGHT, " --%%");
+            it.printf(278, 1, id(font_subtitle), fg, TextAlign::TOP_RIGHT, " --%%");
           }
 
-          // Date — guard against SNTP not yet synced (avoids displaying 1970)
           auto now = id(esptime).now();
           if (now.is_valid()) {
-            it.strftime(278, 18, id(font_subtitle), TextAlign::TOP_RIGHT,
-            "%H:%M %d/%m", now);
+            it.strftime(278, 18, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "%H:%M %d/%m", now);
           } else {
-            it.printf(278, 18, id(font_subtitle), TextAlign::TOP_RIGHT, "--:-- --/--");
+            it.printf(278, 18, id(font_subtitle), fg, TextAlign::TOP_RIGHT, "--:-- --/--");
           }
-          it.printf(278, 18, id(font_icon), TextAlign::TOP_LEFT, "\U0000e627");
+          it.printf(278, 18, id(font_icon), fg, TextAlign::TOP_LEFT, "\U0000e627");
 
+          // Preserve the legacy midpoint-filled annulus, not a min-to-max band.
+          // Keep local lambdas so the standalone YAML needs no C++ include file.
+          auto draw_ring = [&](float vmin, float vmax, float recommended_min,
+                               float recommended_max, int xc, int yc, const char *icon) {
+            const float ring_pi = 3.141592653589793f;
+            const float sweep = 4.71238898038469f;
+            const float start = ring_pi / 2 + (2 * ring_pi - sweep) / 2;
+            const float midpoint = recommended_min / 2 + recommended_max / 2;
+            const float endpoint = start + (midpoint - vmin) / (vmax - vmin) * sweep;
+            for (int y = -23; y <= 22; ++y) {
+              for (int x = -23; x <= 22; ++x) {
+                const float dx = x + 0.5f, dy = y + 0.5f;
+                const float squared = dx * dx + dy * dy;
+                if (squared < 16.5f * 16.5f || squared > 22.5f * 22.5f) continue;
+                float angle = std::atan2(dy, dx);
+                if (angle < start) angle += 2 * ring_pi;
+                const bool in_sweep = angle <= start + sweep;
+                const bool fill = squared >= 17 * 17 && squared <= 22 * 22 && angle <= endpoint;
+                const bool outline = squared <= 17.5f * 17.5f || squared >= 21.5f * 21.5f;
+                if (in_sweep && (fill || outline)) it.draw_pixel_at(xc + 22 + x, yc + 22 + y, fg);
+              }
+            }
+            for (float a : {start, start + sweep}) {
+              it.line(static_cast<int>(std::round(xc + 22 + 17 * std::cos(a))),
+                      static_cast<int>(std::round(yc + 22 + 17 * std::sin(a))),
+                      static_cast<int>(std::round(xc + 22 + 22 * std::cos(a))),
+                      static_cast<int>(std::round(yc + 22 + 22 * std::sin(a))), fg);
+            }
+            it.printf(xc + 22, yc + 11, id(font_gauge_icon), fg, TextAlign::TOP_CENTER, "%s", icon);
+          };
+          static_assert(0 < 100 && 0 <= ${soil_recommended_min} &&
+                        ${soil_recommended_min} <= ${soil_recommended_max} &&
+                        ${soil_recommended_max} <= 100, "Invalid soil display range");
+          draw_ring(0, 100, ${soil_recommended_min}, ${soil_recommended_max}, 80, 50, "\U0000e798");
+          static_assert(0 < ${light_max} && 0 <= ${light_recommended_min} &&
+                        ${light_recommended_min} <= ${light_recommended_max} &&
+                        ${light_recommended_max} <= ${light_max}, "Invalid light display range");
+          draw_ring(0, ${light_max}, ${light_recommended_min}, ${light_recommended_max}, 134, 70, "\U0000e81a");
+          static_assert(${temp_min} < ${temp_max} && ${temp_min} <= ${temp_recommended_min} &&
+                        ${temp_recommended_min} <= ${temp_recommended_max} &&
+                        ${temp_recommended_max} <= ${temp_max}, "Invalid temp display range");
+          draw_ring(${temp_min}, ${temp_max}, ${temp_recommended_min}, ${temp_recommended_max}, 188, 50, "\U0000e1ff");
+          static_assert(${hum_min} < ${hum_max} && ${hum_min} <= ${hum_recommended_min} &&
+                        ${hum_recommended_min} <= ${hum_recommended_max} &&
+                        ${hum_recommended_max} <= ${hum_max}, "Invalid hum display range");
+          draw_ring(${hum_min}, ${hum_max}, ${hum_recommended_min}, ${hum_recommended_max}, 242, 70, "\U0000f87e");
 
           float pi = 3.141592653589793;
           float alpha = 4.71238898038469;
@@ -254,12 +332,12 @@ display:
           int radius = 22;
           int thick = 7;
 
-          auto draw_gauge = [&](float value, bool has_val, float vmin, float vmax, int xc, int yc, const char* fmt) {
-            if (!has_val || !std::isfinite(value)) {
-              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, "--");
+          auto draw_gauge = [&](float value, bool valid, float vmin, float vmax, int xc, int yc, const char* fmt) {
+            if (!valid || !std::isfinite(value)) {
+              it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, "--");
               return;
             }
-            // Keep the sensor reading intact for the numeric label.
+            // Keep the measured number; clamp only the needle coordinates.
             float needle_value = value;
             if (needle_value < vmin) needle_value = vmin;
             if (needle_value > vmax) needle_value = vmax;
@@ -270,16 +348,16 @@ display:
             int y1 = static_cast<int>(yc + radius + (radius+thick) * sin(pi / 2 + beta / 2 + val + 0.1));
             int x2 = static_cast<int>(xc + radius + (radius+thick) * cos(pi / 2 + beta / 2 + val - 0.1));
             int y2 = static_cast<int>(yc + radius + (radius+thick) * sin(pi / 2 + beta / 2 + val - 0.1));
-            it.line(x0, y0, x1, y1);
-            it.line(x1, y1, x2, y2);
-            it.line(x2, y2, x0, y0);
-            it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), TextAlign::TOP_CENTER, fmt, value);
+            it.line(x0, y0, x1, y1, fg);
+            it.line(x1, y1, x2, y2, fg);
+            it.line(x2, y2, x0, y0, fg);
+            it.printf(xc + radius, yc + 1.7*radius, id(font_parameters), fg, TextAlign::TOP_CENTER, fmt, value);
           };
 
-          draw_gauge(id(soil).state, id(soil).has_state(), 0, 100, 80, 50, "%.0f%%");
-          draw_gauge(id(light).state, id(light).has_state(), 0, 3775, 134, 70, "%.0flx");
-          draw_gauge(id(temp).state, id(temp).has_state(), -10, 50, 188, 50, "%.0f°C");
-          draw_gauge(id(hum).state, id(hum).has_state(), 20, 80, 242, 70, "%.0f%%");
+          draw_gauge(id(soil).state,  id(soil).has_state(),  0,           100,          80,  50, "%.0f%%");
+          draw_gauge(id(light).state, id(light).has_state(), 0,           ${light_max}, 134, 70, "%.0flx");
+          draw_gauge(id(temp).state,  id(temp).has_state(),  ${temp_min}, ${temp_max},  188, 50, "%.0f°C");
+          draw_gauge(id(hum).state,   id(hum).has_state(),   ${hum_min},  ${hum_max},   242, 70, "%.0f%%");
 
 deep_sleep:
   id: deep_sleep_control
