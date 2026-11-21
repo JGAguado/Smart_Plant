@@ -9,6 +9,9 @@ from display_automation import DisplayProgram, DisplayRuntime, PackageLoader
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Simulated BUSY-high duration of one full refresh. The released epaper_spi waits
+# at least 3 s after the refresh command; the real waveform time is a canary gate.
+REFRESH_BUSY_MS = 3050
 
 
 class MaintenanceStorageTests(unittest.TestCase):
@@ -25,7 +28,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         def busy(ms):
             updates = [t for t, key, value in runtime.events
                        if key == "component.update" and value == "my_display"]
-            return int(bool(updates) and healthy_display and 50 <= ms - updates[-1] < 350)
+            return int(bool(updates) and healthy_display and 50 <= ms - updates[-1] < REFRESH_BUSY_MS)
         runtime.busy = busy
         runtime.state.boot_sequence_complete = True
         return runtime
@@ -75,7 +78,7 @@ class MaintenanceStorageTests(unittest.TestCase):
         runtime = self.runtime()
         runtime.state.storage_active = True
         runtime.execute("boot")
-        runtime.run_until(5000)
+        runtime.run_until(8000)
         self.assertEqual(self.updates(runtime), ["max17043_id", "my_display"])
         self.assertEqual(runtime.state.selected_page, runtime.state.page_storage)
         self.assertEqual(runtime.sleep[1], 86400000)
@@ -117,12 +120,12 @@ class MaintenanceStorageTests(unittest.TestCase):
         runtime = self.runtime()
         runtime.state.maintenance_requested = True
         runtime.execute("prepare_cycle")
-        runtime.run_until(2000)
+        runtime.run_until(5000)
         published = self.publications(runtime, "maintenance_status")
         self.assertEqual([state for _, state in published], ["ON"])
         refresh_at = next(t for t, key, value in runtime.events
                           if key == "component.update" and value == "my_display")
-        self.assertGreaterEqual(published[0][0], refresh_at + 350 + 500)
+        self.assertGreaterEqual(published[0][0], refresh_at + REFRESH_BUSY_MS)
 
     def test_watchdog_and_manual_off_clear_retained_command_and_restore_readings(self):
         old = self.program.substitutions["maintenance_timeout"]
@@ -155,11 +158,11 @@ class MaintenanceStorageTests(unittest.TestCase):
         try:
             runtime = self.runtime()
             runtime.execute("maintenance_control_on")
-            runtime.run_until(2900)
+            runtime.run_until(5000)
             # First watchdog expires after the first settled refresh plus 2s.
             # Renew while that deadline is close and before the new settle ends.
             runtime.execute("maintenance_control_on")
-            runtime.run_until(4600)
+            runtime.run_until(8600)
             self.assertTrue(runtime.state.maintenance_active)
             self.assertTrue(runtime.state.maintenance_requested)
             self.assertNotIn("exit_maintenance", [v for _, k, v in runtime.events if k == "script.execute"])
@@ -202,14 +205,14 @@ class MaintenanceStorageTests(unittest.TestCase):
         runtime = self.runtime()
         runtime.state.maintenance_requested = True
         runtime.execute("prepare_cycle")
-        runtime.run_until(2000)
+        runtime.run_until(4000)
         before = len(self.updates(runtime))
         runtime.execute("storage_control_on")
-        runtime.run_until(2100)
+        runtime.run_until(4100)
         self.assertEqual(len(self.updates(runtime)), before)
         self.assertTrue(runtime.state.maintenance_active)
         runtime.execute("maintenance_control_off")
-        runtime.run_until(5000)
+        runtime.run_until(9000)
         self.assertTrue(runtime.state.storage_active)
         self.assertEqual(runtime.state.selected_page, runtime.state.page_storage)
         self.assertEqual(runtime.sleep[1], 86400000)
@@ -287,15 +290,15 @@ class MaintenanceStorageTests(unittest.TestCase):
                 with self.subTest(manual=manual):
                     runtime = self.runtime()
                     runtime.execute("maintenance_control_on")
-                    runtime.run_until(2000)
+                    runtime.run_until(3500)
                     if manual:
                         runtime.execute("maintenance_control_off")
-                        runtime.run_until(2100)
+                        runtime.run_until(3600)
                     else:
-                        runtime.run_until(3300)
+                        runtime.run_until(5600)
                     self.assertFalse(runtime.state.maintenance_active)
                     runtime.execute("maintenance_control_off")
-                    runtime.run_until(26000)
+                    runtime.run_until(32000)
                     started = [v for _, k, v in runtime.events if k == "script.execute"]
                     self.assertEqual(started.count("acquire_normal"), 1)
                     self.assertEqual(self.updates(runtime).count("soil_voltage"), 5)
@@ -414,7 +417,7 @@ class APIStorageIsolationTests(unittest.TestCase):
                     def busy(ms):
                         updates = [t for t, k, v in runtime.events
                                    if k == "component.update" and v == "my_display"]
-                        return int(bool(updates) and 50 <= ms - updates[-1] < 350)
+                        return int(bool(updates) and 50 <= ms - updates[-1] < REFRESH_BUSY_MS)
                     runtime.busy = busy
                     runtime.execute("boot")
                     runtime.run_until(30000)

@@ -67,8 +67,8 @@ strings; it does not rename or repair already migrated HA entities. With MAC
 identifiers, changing an entity's own name still changes its name hash. Keep
 those function names stable too.
 
-Both profiles use the released `waveshare_epaper` driver and wait for the
-panel's physical BUSY cycle before deep sleep. The shared core keeps Improv Serial provisioning but has no fallback AP or
+Both profiles use the released `epaper_spi` driver (model `waveshare-2.9in-v2`) and wait for
+`epaper_spi.is_updating` to clear, with the BUSY pin as a bounded safety check, before deep sleep. The shared core keeps Improv Serial provisioning but has no fallback AP or
 captive portal. It requires an explicit `ota_password` in the device file.
 The public examples read it from `!secret lemon_tree_ota_password`.
 This avoids a public fallback password combined with an empty OTA password.

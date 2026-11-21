@@ -33,14 +33,16 @@ class HardeningContractTest(unittest.TestCase):
         self.assertIn("id: settle_display", CORE)
         self.assertIn("id: recover_display_busy", CORE)
         self.assertIn("script.stop: enter_deep_sleep", CORE)
-        self.assertIn("display_busy_assert_timeout", CORE)
         self.assertIn("display_busy_clear_timeout", CORE)
         self.assertIn("display_busy_recovery_timeout", CORE)
         self.assertIn("digitalRead(${display_busy_gpio}) == LOW", CORE)
         self.assertLess(CORE.index("safe_mode.mark_successful"), CORE.index("deep_sleep.enter: deep_sleep_control"))
 
     def test_unreleased_component_tweaks_are_absent(self):
-        self.assertNotIn("epaper_spi", CORE)
+        # The released epaper_spi driver (ESPHome 2026.11.0) is the display platform.
+        self.assertIn("platform: epaper_spi", CORE)
+        self.assertIn("epaper_spi.is_updating: my_display", CORE)
+        self.assertNotIn("waveshare_epaper", CORE)
         self.assertNotIn("model: MAX17048", CORE)
         self.assertNotIn("max17043.sleep_mode", CORE)
 

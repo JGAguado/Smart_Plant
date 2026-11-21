@@ -108,8 +108,8 @@ int main() {
     esptime.value.valid = available;
     for (float value : {29.999f, 30.0f, 30.001f}) {
       batpercent = {value, true}; Display display; normal_page(display);
-      Color fg = value < 30.0f ? COLOR_OFF : COLOR_ON;
-      Color bg = value < 30.0f ? COLOR_ON : COLOR_OFF;
+      Color fg = value < 30.0f ? COLOR_ON : COLOR_OFF;
+      Color bg = value < 30.0f ? COLOR_OFF : COLOR_ON;
       assert(display.background == bg && display.image_fg == fg && display.image_bg == bg);
       assert(!display.foregrounds.empty());
       for (Color color : display.foregrounds) assert(color == fg);
@@ -118,12 +118,12 @@ int main() {
   for (float value : {std::numeric_limits<float>::quiet_NaN(),
                       std::numeric_limits<float>::infinity()}) {
     batpercent = {value, true}; Display display; normal_page(display);
-    assert(display.background == COLOR_OFF && display.image_fg == COLOR_ON);
-    for (Color color : display.foregrounds) assert(color == COLOR_ON);
+    assert(display.background == COLOR_ON && display.image_fg == COLOR_OFF);
+    for (Color color : display.foregrounds) assert(color == COLOR_OFF);
   }
   batpercent = {10, false}; Display unknown; critical_page(unknown);
-  assert(unknown.background == COLOR_ON && unknown.text.back() == "BATTERY --%");
-  for (Color color : unknown.foregrounds) assert(color == COLOR_OFF);
+  assert(unknown.background == COLOR_OFF && unknown.text.back() == "BATTERY --%");
+  for (Color color : unknown.foregrounds) assert(color == COLOR_ON);
   batpercent = {15, true}; Display critical; critical_page(critical);
   assert(critical.text.back() == "BATTERY 15%");
 }

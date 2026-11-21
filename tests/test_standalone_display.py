@@ -172,6 +172,7 @@ class DisplayFlowScenarios:
             for reverse in (False, True):
                 runtime = self.runtime(signal, reverse)
                 runtime.state.display_safe_to_sleep = False
+                runtime.state.my_display.warning = True  # abandoned driver keeps the guard closed
                 runtime.execute("recover_display_busy")
                 runtime.run_until(32000 + self.fault_hook_ms)
                 self.assert_valid_sleep(runtime)
@@ -180,9 +181,19 @@ class DisplayFlowScenarios:
                 self.assertEqual(runtime.state.reset_high_count, 1)
                 self.assertFalse([e for e in runtime.events if e[1] == "component.update"])
 
-    def test_late_high_after_settle_enters_recovery(self):
+    def test_busy_high_after_driver_done_sleeps_normally(self):
+        # Canary 2026-11-21: BUSY stays high after the driver's deep-sleep command.
         for reverse in (False, True):
             runtime = self.runtime(lambda ms: int(ms >= 500), reverse)
+            runtime.execute("enter_deep_sleep")
+            runtime.run_until(5000)
+            self.assert_valid_sleep(runtime)
+            self.assertEqual(runtime.state.reset_low_count, 0)
+
+    def test_abandoned_driver_with_busy_high_enters_recovery(self):
+        for reverse in (False, True):
+            runtime = self.runtime(lambda ms: int(ms >= 500), reverse)
+            runtime.state.my_display.warning = True
             runtime.execute("enter_deep_sleep")
             runtime.run_until(33000)
             self.assert_valid_sleep(runtime)
