@@ -131,6 +131,8 @@ globals:
     initial_value: 'true'
 
 esphome:
+  # The dedicated max17048 platform first shipped in stable 2026.11.0.
+  min_version: "2026.11.0"
   name: "${configured_name}"
   name_add_mac_suffix: "${name_add_mac_suffix}"
   friendly_name: "${display_name}"
@@ -246,7 +248,7 @@ switch:
     internal: true
 
 sensor:
-  - platform: max17043
+  - platform: max17048
     id: max17043_id
     update_interval: never
     battery_voltage:

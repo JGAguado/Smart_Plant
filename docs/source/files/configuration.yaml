@@ -41,6 +41,8 @@ substitutions:
   display_busy_recovery_timeout: "30s"
 
 esphome:
+  # The dedicated max17048 platform first shipped in stable 2026.11.0.
+  min_version: "2026.11.0"
   name: "${device_name}"
   name_add_mac_suffix: true
   project:
@@ -164,7 +166,7 @@ switch:
 sensor:    
 
   # Battery level sensor    
-  - platform: max17043
+  - platform: max17048
     id: max17043_id
     battery_voltage:
       id: batvolt      
