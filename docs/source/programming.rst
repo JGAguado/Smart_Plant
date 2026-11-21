@@ -32,6 +32,12 @@ Edit these values in your copy:
 * ``timezone``: your IANA timezone, such as ``Europe/Paris``.
 * ``ap_pwd``: a new password for the fallback Wi-Fi hotspot.
 
+Choose stable technical names before the first discovery. For shared packages,
+read the `naming guide
+<https://github.com/JGAguado/Smart_Plant/blob/V2R1/examples/multi-device/NAMING.md>`_.
+It explains why an entity rename can change MQTT discovery identity and why
+normal-page label text is separate from firmware entity names.
+
 Add your network credentials to the existing ``wifi:`` block. Keep its other
 settings. Do not add a second ``wifi:`` block.
 

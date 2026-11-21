@@ -16,6 +16,11 @@ transport profile. The API profile clears a Storage latch left by the MQTT
 profile and keeps the common low-battery latch. Keep credentials in the local `secrets.yaml`; remote package
 files contain no secrets.
 
+Before naming or renaming a device, read
+[Device names, entity names and label text](NAMING.md). It distinguishes the
+current package behavior from proposed improvements and explains the MQTT
+discovery risks.
+
 The MQTT example preserves an explicit topic prefix. Treat that prefix as a
 stable identity after Home Assistant discovery, because changing it creates new
 entities.
