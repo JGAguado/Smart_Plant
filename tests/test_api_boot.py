@@ -1,7 +1,7 @@
 """Execute the profile's YAML wait with pinned ESPHome C++ action classes.
 
-Run with ESPHome 2026.10.0 installed. Only scheduler/hardware scaffolding is fake;
-WaitUntilAction, APIConnectedCondition and the subscription lookup are extracted
+Run with ESPHome 2026.11.0 installed. Only scheduler/hardware scaffolding is fake;
+WaitUntilAction, APIServer::is_connected(bool) and the subscription lookup are extracted
 from that installed implementation. No socket or device is used.
 """
 import importlib.util
@@ -69,9 +69,17 @@ struct APIServer {
   bool connected = false;
   bool is_connected() const { return connected; }
   bool is_connected_with_state_subscription() const;
+// PINNED_API_MEMBER
 };
 APIServer server;
 APIServer *global_api_server = &server;
+// Local mirror of the generated api.connected predicate: ApplyCall("is_connected({})") emits
+// `return parent->is_connected(<state_subscription_only>);` (asserted against components/api/__init__.py).
+template<typename... Ts> struct APIConnectedCondition : Condition<Ts...> {
+  bool subscription_only = false;
+  void set_state_subscription_only(bool value) { subscription_only = value; }
+  bool check(const Ts &...) override { return server.is_connected(subscription_only); }
+};
 struct Sensor { float state; bool valid; bool has_state() const { return valid; } };
 Sensor batpercent;
 bool low_batt_active;
@@ -121,9 +129,9 @@ class APIBootTests(unittest.TestCase):
     def setUpClass(cls):
         installed = importlib.util.find_spec("esphome")
         if installed is None:
-            raise unittest.SkipTest("Run this suite with pinned ESPHome 2026.10.0 installed")
-        if importlib.metadata.version("esphome") != "2026.10.0":
-            raise RuntimeError("API boot scenarios require exact ESPHome 2026.10.0")
+            raise unittest.SkipTest("Run this suite with pinned ESPHome 2026.11.0 installed")
+        if importlib.metadata.version("esphome") != "2026.11.0":
+            raise RuntimeError("API boot scenarios require exact ESPHome 2026.11.0")
         source = Path(installed.origin).parent
         cls.profile = yaml.safe_load(PROFILE.read_text(encoding="utf-8"))
         boot = cls.profile["esphome"]["on_boot"]
@@ -155,9 +163,13 @@ class APIBootTests(unittest.TestCase):
         stored_arg = re.search(r"template<typename T>\s+using stored_trigger_arg_t\s*=.*?;", automation, re.S)
         if stored_arg is None:
             raise AssertionError("Cannot extract exact deferred argument storage type")
-        api = (source / "components/api/api_server.h").read_text()
-        api = api[api.index("template<typename... Ts> class APIConnectedCondition"):]
-        api = api[:api.index("\n};") + len("\n};")]
+        header = (source / "components/api/api_server.h").read_text()
+        api = re.search(r"bool is_connected\(bool state_subscription_only\) const \{.*?\n  \}", header, re.S)
+        if api is None:
+            raise AssertionError("Cannot extract exact APIServer::is_connected(bool)")
+        codegen = (source / "components/api/__init__.py").read_text()
+        if 'ApplyCall(\n        "is_connected({})", ((CONF_STATE_SUBSCRIPTION_ONLY, cg.bool_),)' not in codegen:
+            raise AssertionError("api.connected codegen no longer calls is_connected(<state_subscription_only>)")
         server = (source / "components/api/api_server.cpp").read_text()
         match = re.search(r"bool APIServer::is_connected_with_state_subscription\(\) const \{.*?\n\}", server, re.S)
         if match is None:
@@ -167,7 +179,8 @@ class APIBootTests(unittest.TestCase):
         path = Path(cls.temp.name)
         cpp = path / "api.cpp"
         cls.executable = path / "api"
-        cpp.write_text(STUB.replace("// PINNED_IMPLEMENTATION", stored_arg[0] + "\n" + match[0] + "\n" + api + "\n" + action)
+        cpp.write_text(STUB.replace("// PINNED_IMPLEMENTATION", stored_arg[0] + "\n" + match[0] + "\n" + action)
+                       .replace("// PINNED_API_MEMBER", api[0])
                        .replace("/* BATTERY_POLICY */", policy))
         result = subprocess.run([shutil.which("g++") or "g++", "-std=c++20", str(cpp), "-o", str(cls.executable)],
                                 capture_output=True, text=True)
