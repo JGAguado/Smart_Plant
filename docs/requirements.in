@@ -1,2 +1,4 @@
 Sphinx>=5,<6
 sphinx_rtd_theme
+sphinxcontrib-googleanalytics
+sphinx-copybutton

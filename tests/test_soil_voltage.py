@@ -1,6 +1,6 @@
 """Execute pinned sensor filters with the package's real soil configuration.
 
-Run with ESPHome 2026.11.0. Only storage and filter plumbing are local scaffolding;
+Run with ESPHome 2026.10.0. Only storage and filter plumbing are local scaffolding;
 median scheduling, median computation, rejection and calibration use its source.
 No ADC, broker or device is used.
 """
@@ -32,9 +32,9 @@ class SoilVoltageTests(unittest.TestCase):
     def setUpClass(cls):
         spec = importlib.util.find_spec("esphome")
         if spec is None:
-            raise unittest.SkipTest("Run with pinned ESPHome 2026.11.0")
-        if importlib.metadata.version("esphome") != "2026.11.0":
-            raise RuntimeError("Soil filter scenarios require ESPHome 2026.11.0")
+            raise unittest.SkipTest("Run with pinned ESPHome 2026.10.0")
+        if importlib.metadata.version("esphome") != "2026.10.0":
+            raise RuntimeError("Soil filter scenarios require ESPHome 2026.10.0")
         source = (Path(spec.origin).parent / "components/sensor/filter.cpp").read_text()
         cls.config = yaml.safe_load((ROOT / "examples/multi-device/packages/smart_plant_core.yaml").read_text().replace("!lambda", ""))
         voltage = next(s for s in cls.config["sensor"] if s.get("id") == "soil_voltage")
@@ -80,10 +80,6 @@ struct ClampFilter {
   float min_, max_; bool ignore_out_of_range_;
   optional<float> new_value(float);
 };
-struct CalibrateLinearFilter {
-  const std::array<float, 3> *functions_;
-  optional<float> new_value(float);
-};
 // PINNED
 int main(int argc, char **argv) {
   MedianFilter median;
@@ -92,13 +88,12 @@ int main(int argc, char **argv) {
   median.send_at_ = EVERY - FIRST;
   ClampFilter clamp{MINIMUM, MAXIMUM, true};
   std::array<float, 3> calibration{SLOPE, INTERCEPT, INFINITY};
-  CalibrateLinearFilter calibrate{&calibration};
   for (int i = 1; i < argc; ++i) {
     auto value = median.new_value(std::stof(argv[i]));
     if (!value) continue;
     value = clamp.new_value(*value);
     if (!value) continue;
-    const float x = *calibrate.new_value(*value);
+    const float x = *calibrate_linear_compute(&calibration, 1, *value);
     const float percent = *[&]() -> optional<float> { FINAL; }();
     std::cout << i << ' ' << *value << ' ' << percent << '\n';
   }
@@ -106,7 +101,7 @@ int main(int argc, char **argv) {
 '''
         signatures = ["optional<float> SlidingWindowFilter::new_value", "FixedVector<float> SortedWindowFilter::get_window_values_",
                       "float MedianFilter::compute_result", "optional<float> ClampFilter::new_value",
-                      "optional<float> CalibrateLinearFilter::new_value"]
+                      "optional<float> calibrate_linear_compute"]
         code = code.replace("// PINNED", "\n".join(function(source, signature) for signature in signatures))
         replacements = {"WINDOW": median["window_size"], "EVERY": median["send_every"], "FIRST": median["send_first_at"],
                         "MINIMUM": clamp["min_value"], "MAXIMUM": clamp["max_value"], "SLOPE": slope,

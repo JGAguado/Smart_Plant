@@ -16,9 +16,9 @@ class LabelPackageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if importlib.util.find_spec("esphome") is None:
-            raise unittest.SkipTest("Run with pinned ESPHome 2026.11.0")
-        if importlib.metadata.version("esphome") != "2026.11.0":
-            raise RuntimeError("Package precedence scenarios require ESPHome 2026.11.0")
+            raise unittest.SkipTest("Run with pinned ESPHome 2026.10.0")
+        if importlib.metadata.version("esphome") != "2026.10.0":
+            raise RuntimeError("Package precedence scenarios require ESPHome 2026.10.0")
         from esphome.components.packages import do_packages_pass
         cls.expand = staticmethod(do_packages_pass)
         core = yaml.safe_load((ROOT / "examples/multi-device/packages/smart_plant_core.yaml").read_text().replace("!lambda", ""))
