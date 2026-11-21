@@ -545,7 +545,7 @@ script:
           count: 5
           then:
             - component.update: soil_voltage
-            - delay: 3s
+            - delay: 200ms
       - wait_until:
           condition:
             lambda: 'return id(soil).has_state() && std::isfinite(id(soil).state);'

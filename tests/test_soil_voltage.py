@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
         self.assertEqual(self.config["substitutions"]["soil_v_dry"], "2.8")
         acquire = next(s for s in self.config["script"] if s["id"] == "acquire_normal")
         repeat = next(action["repeat"] for action in acquire["then"] if "repeat" in action)
-        self.assertEqual(repeat, {"count": 5, "then": [{"component.update": "soil_voltage"}, {"delay": "3s"}]})
+        self.assertEqual(repeat, {"count": 5, "then": [{"component.update": "soil_voltage"}, {"delay": "200ms"}]})
 
 
 if __name__ == "__main__":
