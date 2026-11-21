@@ -48,7 +48,7 @@ They need `g++` plus the listed Python packages. PNG bytes can change with
 rendering-library versions. New hardware or fleet validation remains a
 separate operation. Revert this isolated optional-tool contribution to undo it.
 
-With ESPHome 2026.9.0 installed, also run:
+With ESPHome 2026.11.0 installed, also run:
 
 ```sh
 python3 -m unittest discover -s tests -p test_label_packages.py -v

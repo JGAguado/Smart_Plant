@@ -134,7 +134,7 @@ This feature does not require MQTT or Home Assistant commands.
 The examples fetch both packages from `JGAguado/Smart_Plant@V2R1`. Keep the
 core and transport on the same revision. The fork is not required.
 
-With ESPHome 2026.9.0 installed, run from the repository root:
+With ESPHome 2026.11.0 installed, run from the repository root:
 
 ```sh
 python scripts/validate_public_examples.py

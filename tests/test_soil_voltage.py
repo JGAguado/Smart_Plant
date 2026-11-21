@@ -1,6 +1,6 @@
 """Execute pinned sensor filters with the package's real soil configuration.
 
-Run with ESPHome 2026.9.0. Only storage and filter plumbing are local scaffolding;
+Run with ESPHome 2026.11.0. Only storage and filter plumbing are local scaffolding;
 median scheduling, median computation, rejection and calibration use its source.
 No ADC, broker or device is used.
 """
@@ -32,9 +32,9 @@ class SoilVoltageTests(unittest.TestCase):
     def setUpClass(cls):
         spec = importlib.util.find_spec("esphome")
         if spec is None:
-            raise unittest.SkipTest("Run with pinned ESPHome 2026.9.0")
-        if importlib.metadata.version("esphome") != "2026.9.0":
-            raise RuntimeError("Soil filter scenarios require ESPHome 2026.9.0")
+            raise unittest.SkipTest("Run with pinned ESPHome 2026.11.0")
+        if importlib.metadata.version("esphome") != "2026.11.0":
+            raise RuntimeError("Soil filter scenarios require ESPHome 2026.11.0")
         source = (Path(spec.origin).parent / "components/sensor/filter.cpp").read_text()
         cls.config = yaml.safe_load((ROOT / "examples/multi-device/packages/smart_plant_core.yaml").read_text().replace("!lambda", ""))
         voltage = next(s for s in cls.config["sensor"] if s.get("id") == "soil_voltage")
@@ -80,6 +80,10 @@ struct ClampFilter {
   float min_, max_; bool ignore_out_of_range_;
   optional<float> new_value(float);
 };
+struct CalibrateLinearFilter {
+  const std::array<float, 3> *functions_;
+  optional<float> new_value(float);
+};
 // PINNED
 int main(int argc, char **argv) {
   MedianFilter median;
@@ -88,12 +92,13 @@ int main(int argc, char **argv) {
   median.send_at_ = EVERY - FIRST;
   ClampFilter clamp{MINIMUM, MAXIMUM, true};
   std::array<float, 3> calibration{SLOPE, INTERCEPT, INFINITY};
+  CalibrateLinearFilter calibrate{&calibration};
   for (int i = 1; i < argc; ++i) {
     auto value = median.new_value(std::stof(argv[i]));
     if (!value) continue;
     value = clamp.new_value(*value);
     if (!value) continue;
-    const float x = *calibrate_linear_compute(&calibration, 1, *value);
+    const float x = *calibrate.new_value(*value);
     const float percent = *[&]() -> optional<float> { FINAL; }();
     std::cout << i << ' ' << *value << ' ' << percent << '\n';
   }
@@ -101,7 +106,7 @@ int main(int argc, char **argv) {
 '''
         signatures = ["optional<float> SlidingWindowFilter::new_value", "FixedVector<float> SortedWindowFilter::get_window_values_",
                       "float MedianFilter::compute_result", "optional<float> ClampFilter::new_value",
-                      "optional<float> calibrate_linear_compute"]
+                      "optional<float> CalibrateLinearFilter::new_value"]
         code = code.replace("// PINNED", "\n".join(function(source, signature) for signature in signatures))
         replacements = {"WINDOW": median["window_size"], "EVERY": median["send_every"], "FIRST": median["send_first_at"],
                         "MINIMUM": clamp["min_value"], "MAXIMUM": clamp["max_value"], "SLOPE": slope,
@@ -121,9 +126,16 @@ int main(int argc, char **argv) {
         result = subprocess.run([str(self.executable), *map(str, values)], check=True, text=True, capture_output=True)
         return [tuple(map(float, line.split())) for line in result.stdout.splitlines()]
 
+    @property
+    def calibration(self):
+        wet = float(self.config["substitutions"]["soil_v_wet"])
+        dry = float(self.config["substitutions"]["soil_v_dry"])
+        return wet, (wet + dry) / 2, dry
+
     def test_single_filtered_publication_and_copy_percentage(self):
-        self.assertEqual(self.process([1.25] * 4), [])
-        for voltage, percentage in [(1.25, 100), (2.025, 50), (2.8, 0)]:
+        wet, middle, dry = self.calibration
+        self.assertEqual(self.process([wet] * 4), [])
+        for voltage, percentage in [(wet, 100), (middle, 50), (dry, 0)]:
             result = self.process([voltage] * 10)
             self.assertEqual([r[0] for r in result], [5, 10])
             for _, actual_voltage, actual_percent in result:
@@ -131,14 +143,19 @@ int main(int argc, char **argv) {
                 self.assertAlmostEqual(actual_percent, percentage, places=3)
 
     def test_median_rejects_spikes_and_invalid_windows(self):
-        result = self.process([0.1, 2.025, 2.025, 2.025, 4.0])
-        self.assertEqual(result, [(5, 2.025, 50)])
+        _, middle, _ = self.calibration
+        result = self.process([0.1, middle, middle, middle, 4.0])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0], 5)
+        self.assertAlmostEqual(result[0][1], middle, places=4)
+        self.assertAlmostEqual(result[0][2], 50, places=3)
         for invalid in (0.1, 4.0, "nan", "inf", "-inf"):
             with self.subTest(invalid=invalid):
                 self.assertEqual(self.process([invalid] * 5), [])
 
     def test_calibration_and_three_second_cadence_are_preserved(self):
-        self.assertEqual(self.config["substitutions"]["soil_v_wet"], "1.25")
+        # Fork fleet default: shared immersion calibration (the upstream default is 1.25).
+        self.assertEqual(self.config["substitutions"]["soil_v_wet"], "1.36")
         self.assertEqual(self.config["substitutions"]["soil_v_dry"], "2.8")
         acquire = next(s for s in self.config["script"] if s["id"] == "acquire_normal")
         repeat = next(action["repeat"] for action in acquire["then"] if "repeat" in action)

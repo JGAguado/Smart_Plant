@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prepare synthetic local builds. Never call a device, broker, HA or builder.
 
-Run with the ESPHome 2026.10.0 Python environment. This writes only to tmp/.
+Run with the ESPHome 2026.11.0 Python environment. This writes only to tmp/.
 Shared and standalone pages have no runtime renderer switch. Baselines are test inputs.
 """
 import argparse
