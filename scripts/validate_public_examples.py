@@ -22,6 +22,7 @@ PACKAGE_URL = re.compile(
 
 def validate():
     secrets = {
+        "lemon_tree_ota_password": "offline-example-ota",
         "wifi_ssid": "offline-example",
         "wifi_password": "offline-example-password",
         "mqtt_broker": "192.0.2.1",
